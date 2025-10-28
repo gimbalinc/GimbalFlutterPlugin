@@ -1,6 +1,6 @@
 # airship_adapter_flutter
 
-Configures Airship and starts Gimbal place monitoring, and emits visit and debug events to Flutter via an event stream
+Configures Airship and starts Gimbal place monitoring, and emits visit and debug events to Flutter via an event stream.
 
 ## Features
 - Configure Airship (keys provided by host app)

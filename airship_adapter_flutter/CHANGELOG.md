@@ -22,4 +22,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Android/iOS)
 - Runtime permission validation
 - Place transition event handling
--
+
