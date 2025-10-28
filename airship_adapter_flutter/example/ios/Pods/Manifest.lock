@@ -1,0 +1,66 @@
+PODS:
+  - Airship (19.0.3):
+    - Airship/Automation (= 19.0.3)
+    - Airship/Basement (= 19.0.3)
+    - Airship/Core (= 19.0.3)
+    - Airship/FeatureFlags (= 19.0.3)
+    - Airship/MessageCenter (= 19.0.3)
+    - Airship/PreferenceCenter (= 19.0.3)
+  - Airship/Automation (19.0.3):
+    - Airship/Core
+  - Airship/Basement (19.0.3)
+  - Airship/Core (19.0.3):
+    - Airship/Basement
+  - Airship/FeatureFlags (19.0.3):
+    - Airship/Core
+  - Airship/MessageCenter (19.0.3):
+    - Airship/Core
+  - Airship/PreferenceCenter (19.0.3):
+    - Airship/Core
+  - airship_adapter_flutter (1.0.0):
+    - Flutter
+    - GimbalAirshipAdapter (~> 4.3.0)
+  - Flutter (1.0.0)
+  - GimbalAirshipAdapter (4.3.0):
+    - Airship (~> 19.0.3)
+    - GimbalXCFramework (~> 2.94.0)
+  - GimbalXCFramework (2.94.0)
+  - integration_test (0.0.1):
+    - Flutter
+  - permission_handler_apple (9.3.0):
+    - Flutter
+
+DEPENDENCIES:
+  - airship_adapter_flutter (from `.symlinks/plugins/airship_adapter_flutter/ios`)
+  - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+
+SPEC REPOS:
+  trunk:
+    - Airship
+    - GimbalAirshipAdapter
+    - GimbalXCFramework
+
+EXTERNAL SOURCES:
+  airship_adapter_flutter:
+    :path: ".symlinks/plugins/airship_adapter_flutter/ios"
+  Flutter:
+    :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+
+SPEC CHECKSUMS:
+  Airship: cb24c861b4ab7023a71acd977960475042b35eb5
+  airship_adapter_flutter: ded8297b046e9369c543e4703ebbf49e5315fc01
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  GimbalAirshipAdapter: e7cda33e9bcd34471ac14163c2506ce3ff737bdb
+  GimbalXCFramework: 8e0d3f29ccd1146f29e441ee3b45396026b4176a
+  integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
+  permission_handler_apple: 9878588469a2b0d0fc1e048d9f43605f92e6cec2
+
+PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+
+COCOAPODS: 1.16.2

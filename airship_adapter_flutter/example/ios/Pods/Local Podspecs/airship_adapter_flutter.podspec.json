@@ -1,0 +1,34 @@
+{
+  "name": "airship_adapter_flutter",
+  "version": "1.0.0",
+  "summary": "Flutter bridge for Gimbal + Airship Adapter",
+  "description": "Bridges the GimbalAirshipAdapter iOS SDK for Flutter",
+  "homepage": "https://infillion.com",
+  "license": {
+    "file": "../LICENSE"
+  },
+  "authors": {
+    "Rafia Rashid": "rafia.rashid@infillion.com"
+  },
+  "source": {
+    "path": "."
+  },
+  "source_files": "Classes/**/*",
+  "dependencies": {
+    "Flutter": [
+
+    ],
+    "GimbalAirshipAdapter": [
+      "~> 4.3.0"
+    ]
+  },
+  "platforms": {
+    "ios": "15.0"
+  },
+  "pod_target_xcconfig": {
+    "DEFINES_MODULE": "YES",
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "i386"
+  },
+  "swift_versions": "5.0",
+  "swift_version": "5.0"
+}

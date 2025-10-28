@@ -1,0 +1,6 @@
+${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh
+${BUILT_PRODUCTS_DIR}/Airship/AirshipKit.framework
+${BUILT_PRODUCTS_DIR}/GimbalAirshipAdapter/GimbalAirshipAdapter.framework
+${BUILT_PRODUCTS_DIR}/airship_adapter_flutter/airship_adapter_flutter.framework
+${BUILT_PRODUCTS_DIR}/integration_test/integration_test.framework
+${PODS_XCFRAMEWORKS_BUILD_DIR}/GimbalXCFramework/Gimbal.framework/Gimbal

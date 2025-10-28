@@ -1,0 +1,11 @@
+framework module Gimbal {
+  umbrella header "Gimbal.h"
+  export *
+
+  module * { export * }
+}
+
+module Gimbal.Swift {
+  header "Gimbal-Swift.h"
+  requires objc
+}

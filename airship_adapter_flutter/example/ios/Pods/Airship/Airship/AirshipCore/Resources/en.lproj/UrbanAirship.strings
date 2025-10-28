@@ -1,0 +1,89 @@
+"ua_connection_error" = "Connection Error";
+"ua_content_error" = "Content Error";
+
+"ua_delete_message" = "Delete";
+"ua_delete_message_description" = "Delete message";
+
+"ua_delete_messages" = "Delete";
+"ua_delete_messages_description" = "Delete selected messages";
+
+"ua_done" = "Done";
+"ua_done_description" = "Dismiss message center";
+
+"ua_message_cell_editing_description" = "Toggles selection";
+"ua_message_cell_description" = "Displays full message";
+
+"ua_empty_message_list" = "No messages";
+"ua_mark_messages_read" = "Mark Read";
+"ua_mark_messages_read_description" = "Mark selected messages read";
+
+"ua_cancel_edit_messages" = "Cancel";
+"ua_cancel_edit_messages_description" = "Cancel message edits";
+
+"ua_select_all_messages" = "Select All";
+"ua_select_all_messages_description" = "Selects all messages";
+
+"ua_select_none_messages" = "Select None";
+"ua_select_none_messages_description" = "Reset message selection";
+
+"ua_edit_messages" = "Edit";
+"ua_edit_messages_description" = "Edit messages";
+"ua_unread_message_description" = "Message unread";
+
+// Message <TITLE>, sent at <DATE>
+"ua_message_description" = "Message %@, sent at %@";
+// Unread message <TITLE>, sent at <DATE>
+"ua_message_unread_description" = "Unread message %@, sent at %@";
+
+"ua_mc_failed_to_load" = "Unable to load message. Please try again later.";
+"ua_mc_no_longer_available" = "The selected message is no longer available.";
+"ua_message_center_title" = "Message Center";
+"ua_message_not_selected" = "No messages selected";
+
+"ua_notification_button_accept" = "Accept";
+"ua_notification_button_add" = "Add";
+"ua_notification_button_add_to_calendar" = "Add to Calendar";
+"ua_notification_button_book_now" = "Book Now";
+"ua_notification_button_buy_now" = "Buy Now";
+"ua_notification_button_copy" = "Copy";
+"ua_notification_button_decline" = "Decline";
+"ua_notification_button_dislike" = "Dislike";
+"ua_notification_button_download" = "Download";
+"ua_notification_button_follow" = "Follow";
+"ua_notification_button_less_like" = "Less Like This";
+"ua_notification_button_like" = "Like";
+"ua_notification_button_more_like" = "More Like This";
+"ua_notification_button_no" = "No";
+"ua_notification_button_opt_in" = "Opt-in";
+"ua_notification_button_opt_out" = "Opt-out";
+"ua_notification_button_rate_now" = "Rate Now";
+"ua_notification_button_remind" = "Remind Me Later";
+"ua_notification_button_save" = "Save";
+"ua_notification_button_search" = "Search";
+"ua_notification_button_send_info" = "Send Info";
+"ua_notification_button_share" = "Share";
+"ua_notification_button_shop_now" = "Shop Now";
+"ua_notification_button_tell_me_more" = "Tell Me More";
+"ua_notification_button_unfollow" = "Unfollow";
+"ua_notification_button_yes" = "Yes";
+"ua_ok" = "OK";
+"ua_retry_button" = "Retry";
+
+"ua_chat_title" = "Chat";
+"ua_chat_send_button" = "Send";
+
+"ua_preference_center_title" = "Preference Center";
+"ua_preference_center_empty" = "Unable to load preferences. Please try again later.";
+
+
+// Generic localizations
+"ua_dismiss" = "Dismiss";
+"ua_escape" = "Escape";
+"ua_next" = "Next";
+"ua_previous" = "Previous";
+"ua_submit" = "Submit";
+"ua_loading" = "Loading";
+"ua_pager_progress" = "Page %@ of %@";
+"ua_play" = "Play";
+"ua_pause" = "Pause";
+"ua_stop" = "Stop";

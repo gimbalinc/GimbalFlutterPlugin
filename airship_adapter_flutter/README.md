@@ -1,6 +1,6 @@
 # airship_adapter_flutter
 
-Flutter bridge for the Gimbal ↔ Airship adapter. It configures Airship and starts Gimbal place monitoring, and emits visit and debug events to Flutter via an event stream.
+Configures Airship and starts Gimbal place monitoring, and emits visit and debug events to Flutter via an event stream.
 
 ## Features
 - Configure Airship (keys provided by host app)
@@ -8,7 +8,7 @@ Flutter bridge for the Gimbal ↔ Airship adapter. It configures Airship and sta
 - Event stream with:
   - Entered/Exited place: <place name>
   - Beacon sightings (if available)
-  - Optional debug logs (iOS only): detected location, adapter lifecycle
+  - Optional debug logs
 
 ## Install
 Add to your `pubspec.yaml`:
@@ -64,11 +64,11 @@ AirshipAdapterFlutter.events.listen((e) {
   - `NSLocationAlwaysAndWhenInUseUsageDescription`
   - `NSLocationWhenInUseUsageDescription`
   - If using notifications: the appropriate usage descriptions
-- Background Modes: enable “Location updates” if you want background enter/exit.
+- Background Modes: enable "Location updates" if you want background enter/exit.
 - After adding the plugin, run `pod install` in your iOS project.
 
 ## Event model
-- Transition-based: you will only see “Entered/Exited place …” when the device actually crosses a Place boundary or detects a beacon visit. Staying inside a Place will not produce new events.
+- Transition-based: you will only see "Entered/Exited place …" when the device actually crosses a Place boundary or detects a beacon visit. Staying inside a Place will not produce new events.
 - Initial sync can take a couple of minutes after first run; ensure network is available.
 
 ## API surface
@@ -83,14 +83,27 @@ AirshipAdapterFlutter.events.listen((e) {
   - Ensure you exit and re-enter a Place or approach/leave a beacon.
   - Verify permissions (Always on iOS; background location on Android 10+).
   - For dev, try `await AirshipAdapterFlutter.restart();`.
-- “No push providers found!”
+- "No push providers found!"
   - Add `urbanairship-fcm` and configure FCM if you plan to use push; otherwise ignore.
 - Airship allow list warning
   - Add `urlAllowListScopeOpenUrl` per Airship docs; during dev you can allow all.
 
+## To Release
+- Create a release branch using the updated version number
+- Increment the plugin version in pubspec.yaml
+- Update the CHANGELOG.md
+- Notify QA of availability for testing
+- Commit any outstanding changes
+- Push outstanding commits
+- Create a tag corresponding to the updated version
+- Push the tag
+- Run `flutter pub publish --dry-run` to validate
+- If validation passes, run `flutter pub publish`
+- Verify package appears on pub.dev
+
 ## Versioning and licensing
 - Version: 1.0.0
-- License: see `LICENSE`
+- License: Apache 2.0 (see LICENSE)
 
 ## Notes
 - Keys are supplied by the host app at runtime.
@@ -102,4 +115,3 @@ See `example/` for a runnable demo that:
 - Configures the adapter
 - Starts monitoring
 - Displays events in a list
-
