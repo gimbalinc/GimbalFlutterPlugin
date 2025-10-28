@@ -97,12 +97,6 @@ extension AirshipAdapterFlutterPlugin {
       }
 
     case "start":
-      // Ensure delegates/listeners are set before starting (synchronous)
-      if self.placeManager == nil {
-        self.placeManager = PlaceManager()
-      }
-      self.placeManager?.delegate = self
-      AirshipAdapter.shared.delegate = self
       AirshipAdapter.shared.shouldTrackCustomEntryEvents = true
       AirshipAdapter.shared.shouldTrackCustomExitEvents = true
       AirshipAdapter.shared.shouldTrackRegionEvents = true
@@ -111,7 +105,7 @@ extension AirshipAdapterFlutterPlugin {
       // Notify UI that monitoring has started; place catalog updates may follow asynchronously
       eventSink?("iOS: Gimbal monitoring started")
 
-      print("DEBUG: PlaceManager delegate set: \(self.placeManager?.delegate != nil)")
+      print("DEBUG: Starting Gimbal monitoring")
       eventSink?("iOS: Gimbal started")
       result("Started")
 
@@ -138,22 +132,12 @@ extension AirshipAdapterFlutterPlugin {
       print("\n\n\nDEBUG: PlaceManager didBegin - Entered place: \(visit.place.name)")
       print("DEBUG: Sending entry event to Flutter")
       eventSink?("Entered place: \(visit.place.name)")
-             if let eventSink = self.eventSink {
-                 
-             } else {
-                 print("ERROR: eventSink is nil - cannot send entry event")
-             }
   }
 
   public func placeManager(_ manager: PlaceManager, didEnd visit: Visit) {
       print("\n\n\nDEBUG: PlaceManager didEnd - Exited place: \(visit.place.name)")
       print("DEBUG: Sending exit event to Flutter")
       eventSink?("Exited place: \(visit.place.name)")
-              if let eventSink = self.eventSink {
-                  
-              } else {
-                  print("ERROR: eventSink is nil - cannot send exit event")
-              }
   }
 
   public func placeManager(_ manager: PlaceManager, didReceive sighting: BeaconSighting, forVisits visits: [Any]) {
