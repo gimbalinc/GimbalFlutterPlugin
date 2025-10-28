@@ -1,0 +1,12 @@
+//
+//  Release.xcconfig
+//  Gimbal-SDK
+//
+//  Created by Andrew Tran on 7/15/21.
+//  Copyright © 2021 Gimbal. All rights reserved.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://help.apple.com/xcode/#/dev745c5c974
+SWIFT_SERIALIZE_DEBUGGING_OPTIONS = NO
+OTHER_SWIFT_FLAGS = -Xfrontend -no-serialize-debugging-options

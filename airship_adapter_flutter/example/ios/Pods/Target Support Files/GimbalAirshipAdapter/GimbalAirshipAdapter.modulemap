@@ -1,0 +1,6 @@
+framework module GimbalAirshipAdapter {
+  umbrella header "GimbalAirshipAdapter-umbrella.h"
+
+  export *
+  module * { export * }
+}

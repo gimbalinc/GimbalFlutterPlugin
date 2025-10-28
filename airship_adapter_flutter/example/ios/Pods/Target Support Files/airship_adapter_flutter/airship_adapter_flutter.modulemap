@@ -1,0 +1,6 @@
+framework module airship_adapter_flutter {
+  umbrella header "airship_adapter_flutter-umbrella.h"
+
+  export *
+  module * { export * }
+}
