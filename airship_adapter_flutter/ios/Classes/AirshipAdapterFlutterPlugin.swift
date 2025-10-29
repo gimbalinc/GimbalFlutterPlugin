@@ -14,7 +14,7 @@ public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStream
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = AirshipAdapterFlutterPlugin()
 
-    // Method channel
+    // Method channel.
     let methodChannel = FlutterMethodChannel(
       name: "airship_adapter_flutter/methods",
       binaryMessenger: registrar.messenger()
