@@ -76,7 +76,6 @@ extension AirshipAdapterFlutterPlugin {
               print("Airship.takeOff failed: \(error)")
           }
 
-          // Configure Gimbal Adapter
           AirshipAdapter.shared.shouldTrackCustomEntryEvents = true
           AirshipAdapter.shared.shouldTrackCustomExitEvents = true
           AirshipAdapter.shared.shouldTrackRegionEvents = true
@@ -102,10 +101,6 @@ extension AirshipAdapterFlutterPlugin {
       AirshipAdapter.shared.shouldTrackRegionEvents = true
       AirshipAdapter.shared.restore()
       Gimbal.start()
-      // Notify UI that monitoring has started; place catalog updates may follow asynchronously
-      eventSink?("iOS: Gimbal monitoring started")
-
-      print("DEBUG: Starting Gimbal monitoring")
       eventSink?("iOS: Gimbal started")
       result("Started")
 
@@ -117,7 +112,6 @@ extension AirshipAdapterFlutterPlugin {
     case "restart":
       Gimbal.stop()
       eventSink?("iOS: Gimbal stopped")
-      // Let Dart call start after this returns
       result("Stopped")
 
     default:
@@ -129,14 +123,10 @@ extension AirshipAdapterFlutterPlugin {
 // MARK: - PlaceManagerDelegate
 extension AirshipAdapterFlutterPlugin {
   public func placeManager(_ manager: PlaceManager, didBegin visit: Visit, withDelay delayTime: TimeInterval) {
-      print("\n\n\nDEBUG: PlaceManager didBegin - Entered place: \(visit.place.name)")
-      print("DEBUG: Sending entry event to Flutter")
       eventSink?("Entered place: \(visit.place.name)")
   }
 
   public func placeManager(_ manager: PlaceManager, didEnd visit: Visit) {
-      print("\n\n\nDEBUG: PlaceManager didEnd - Exited place: \(visit.place.name)")
-      print("DEBUG: Sending exit event to Flutter")
       eventSink?("Exited place: \(visit.place.name)")
   }
 
@@ -158,12 +148,10 @@ class LocationManager: NSObject, CLLocationManagerDelegate {
     }
 
     func requestPermissions() {
-        // Ask for "Always" first, fallback to "When In Use"
         locationManager.requestAlwaysAuthorization()
         locationManager.requestWhenInUseAuthorization()
     }
 
-    // Optional: track changes
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         switch status {
         case .authorizedAlways:
