@@ -6,3 +6,4 @@ void main() {
     expect(AirshipAdapterFlutter, isNotNull);
   });
 }
+//
