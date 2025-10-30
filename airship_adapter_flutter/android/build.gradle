@@ -1,0 +1,62 @@
+group = "com.gimbal.airship_adapter_flutter"
+version = "1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.9.1")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace = "com.gimbal.airship_adapter_flutter"
+
+    compileSdk = 34
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+
+
+    testOptions {
+        unitTests.all {
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+
+    dependencies {
+
+        implementation "androidx.annotation:annotation:1.7.1"
+
+// Gimbal Airship Adapter
+        implementation "com.gimbal.android:airship-adapter:2.0.5"
+        implementation 'com.urbanairship.android:urbanairship-core:19.0.0'
+
+        implementation 'com.google.android.gms:play-services-location:21.0.1'
+
+        testImplementation("junit:junit:4.13.2")
+    }
+}
