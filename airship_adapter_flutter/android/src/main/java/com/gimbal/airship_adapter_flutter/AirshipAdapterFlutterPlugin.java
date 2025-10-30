@@ -29,7 +29,7 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
 
   private FlutterPluginBinding pluginBinding;
   private AirshipAdapter adapter;
-  private String gimbalKey; // saved for start()
+  private String gimbalKey;
   private boolean listenersRegistered = false;
 
   @Override
@@ -86,13 +86,6 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
           adapter.setShouldTrackCustomEntryEvent(true);
           adapter.setShouldTrackCustomExitEvent(true);
           adapter.setShouldTrackRegionEvent(true);
-          // The following tracking settings are not available in the current
-          // AirshipAdapter Android SDK. Remove or re-enable if added upstream:
-          // adapter.setShouldTrackBeaconSightingEvent(true);
-          // adapter.setShouldTrackVisitEvent(true);
-          // adapter.setShouldTrackVisitEndEvent(true);
-          // adapter.setShouldTrackVisitStartEvent(true);
-          // adapter.setShouldTrackVisitEndEvent(true);
 
           adapter.restore();
           result.success("Configured successfully");
@@ -105,15 +98,12 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
       case "start":
         try {
           if (adapter != null && gimbalKey != null) {
-            // Validate Android runtime permissions before starting
             String missingPermissions = getMissingPermissionsDescription(context);
             if (!missingPermissions.isEmpty()) {
               Log.w(TAG, "Required permissions not granted. Missing: " + missingPermissions);
               result.error("PERMISSION_DENIED", "Required permissions not granted. Missing: " + missingPermissions, null);
               return;
             }
-
-            // Debug Gimbal state before starting
             Log.d(TAG, "Gimbal isStarted: " + Gimbal.isStarted());
             Log.d(TAG, "Gimbal API Key: " + gimbalKey);
             Log.d(TAG, "All required permissions granted. Preparing listeners");
