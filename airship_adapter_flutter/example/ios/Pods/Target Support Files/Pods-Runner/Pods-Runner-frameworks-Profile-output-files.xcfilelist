@@ -1,5 +1,0 @@
-${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/AirshipKit.framework
-${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/GimbalAirshipAdapter.framework
-${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/airship_adapter_flutter.framework
-${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/integration_test.framework
-${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Gimbal.framework

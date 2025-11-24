@@ -12,7 +12,7 @@ public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStream
   private var enableDebugLogging: Bool = false
   private var isConfigured: Bool = false
   
-  // Serial queue for thread-safe eventSink access
+
   private let eventQueue = DispatchQueue(label: "com.gimbal.airship.eventQueue", qos: .utility)
 
   // MARK: - Logger Helper
@@ -47,7 +47,7 @@ public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStream
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = AirshipAdapterFlutterPlugin()
 
-    // Method channel.
+    
     let methodChannel = FlutterMethodChannel(
       name: "airship_adapter_flutter/methods",
       binaryMessenger: registrar.messenger()
@@ -138,10 +138,7 @@ extension AirshipAdapterFlutterPlugin {
       let inProduction = args["inProduction"] as? Bool ?? false
       self.enableDebugLogging = args["enableDebugLogging"] as? Bool ?? false
 
-      // Note: Gimbal SDK handles location services internally - no separate LocationManager needed
-      // This reduces energy consumption by avoiding duplicate location monitoring
-
-      // Create AirshipConfig programmatically (no plist file needed)
+     
       var config = AirshipConfig()
       if inProduction {
           config.productionAppKey = trimmedAirshipKey
@@ -152,40 +149,34 @@ extension AirshipAdapterFlutterPlugin {
       }
       config.inProduction = inProduction
       
-      // Suppress URL allow list warning (reduces console noise)
+
       config.urlAllowListScopeOpenURL = ["*"]
       
-      // Optional: Disable remote data if not needed (reduces background tasks and energy)
-      // Uncomment the next line if you don't need Airship remote data features:
-      // config.remoteDataAPIEnabled = false
       
       DispatchQueue.main.async {
           do {
               try Airship.takeOff(config, launchOptions: nil)
               
-              // Set up PlaceManager delegate to receive events (only if not already created)
-              // Note: We use PlaceManager delegate, NOT AirshipAdapter delegate, to avoid duplicates
               if self.placeManager == nil {
                   self.placeManager = PlaceManager()
                   self.placeManager?.delegate = self
               }
               
-              // Continue with adapter setup after successful Airship initialization
+              
               self.configureAdapterSettings()
-              // Do NOT set AirshipAdapter.shared.delegate = self (causes duplicate events)
+              
               AirshipAdapter.shared.start(gimbalKey)
               
               Gimbal.setAPIKey(gimbalKey)
-              Gimbal.start()  // Start Gimbal explicitly
-              // Note: restore() is called in start() method, no need to call here
+              Gimbal.start()
               
-              // Mark as configured
+              
+              
               self.isConfigured = true
               
-              // Inform Flutter UI that adapter restore completed (useful when no immediate place transitions)
+             
               self.sendEvent("iOS: AirshipAdapter restored")
 
-              // Debug logging - only if enabled
               if self.enableDebugLogging {
                   Debugger.enableDebugLogging()
                   Debugger.enableBeaconSightingsLogging()
@@ -268,6 +259,3 @@ extension AirshipAdapterFlutterPlugin {
       sendEvent(msg)
   }
 }
-
-// LocationManager removed - Gimbal SDK handles location services internally
-// This reduces energy consumption by avoiding duplicate location monitoring
