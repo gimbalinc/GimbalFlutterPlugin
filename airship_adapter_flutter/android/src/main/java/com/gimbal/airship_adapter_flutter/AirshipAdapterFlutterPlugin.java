@@ -4,7 +4,6 @@ import android.app.Application;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
@@ -22,6 +21,7 @@ import com.urbanairship.AirshipConfigOptions;
 
 public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel.MethodCallHandler {
   private static final String TAG = "AirshipAdapterFlutter";
+  private final Logger logger = Logger.getInstance();
 
   private MethodChannel methodChannel;
   private EventChannel eventChannel;
@@ -31,10 +31,11 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
   private AirshipAdapter adapter;
   private String gimbalKey;
   private boolean listenersRegistered = false;
+  private boolean isConfigured = false;
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
-    Log.d(TAG, "Plugin attached to engine");
+    logger.d("Plugin attached to engine");
     pluginBinding = binding;
 
     methodChannel = new MethodChannel(binding.getBinaryMessenger(), "airship_adapter_flutter/methods");
@@ -44,13 +45,13 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
     eventChannel.setStreamHandler(new EventChannel.StreamHandler() {
       @Override
       public void onListen(Object args, EventChannel.EventSink sink) {
-        Log.d(TAG, "Event stream started listening");
+        logger.d("Event stream started listening");
         eventSink = sink;
       }
 
       @Override
       public void onCancel(Object args) {
-        Log.d(TAG, "Event stream cancelled");
+        logger.d("Event stream cancelled");
         eventSink = null;
       }
     });
@@ -58,8 +59,12 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
 
   @Override
   public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-    Log.d(TAG, "Method called: " + call.method);
+    logger.d("Method called: " + call.method);
     Context context = pluginBinding.getApplicationContext();
+    if (context == null) {
+      result.error("INIT_ERROR", "Application context is null", null);
+      return;
+    }
     Application application = (Application) context;
 
     switch (call.method) {
@@ -68,57 +73,100 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
           String airshipAppKey = call.argument("airshipAppKey");
           String airshipAppSecret = call.argument("airshipAppSecret");
           String androidKey = call.argument("gimbalApiKeyAndroid");
+          Boolean inProduction = call.argument("inProduction");
+          Boolean enableDebug = call.argument("enableDebugLogging");
+          
+          // Validate required arguments
+          if (airshipAppKey == null || airshipAppKey.trim().isEmpty()) {
+            result.error("INVALID_ARGUMENTS", "airshipAppKey cannot be null or empty", null);
+            return;
+          }
+          if (airshipAppSecret == null || airshipAppSecret.trim().isEmpty()) {
+            result.error("INVALID_ARGUMENTS", "airshipAppSecret cannot be null or empty", null);
+            return;
+          }
+          
+          // Validate optional Gimbal key if provided
+          if (androidKey != null && androidKey.trim().isEmpty()) {
+            result.error("INVALID_ARGUMENTS", "gimbalApiKeyAndroid cannot be an empty string. Omit the parameter if not using Gimbal on Android.", null);
+            return;
+          }
+          
+          if (inProduction == null) {
+            inProduction = false;
+          }
+          if (enableDebug == null) {
+            enableDebug = false;
+          }
+          logger.setEnableDebugLogging(enableDebug);
           gimbalKey = androidKey;
+          
+          // Trim whitespace from keys
+          airshipAppKey = airshipAppKey.trim();
+          airshipAppSecret = airshipAppSecret.trim();
+          if (androidKey != null) {
+            androidKey = androidKey.trim();
+            gimbalKey = androidKey;
+          }
 
-          Log.d(TAG, "Configuring with Airship + Gimbal keys (android)");
+          logger.d("Configuring with Airship + Gimbal keys (android), inProduction: " + inProduction);
 
-          AirshipConfigOptions options = AirshipConfigOptions.newBuilder()
-                  .setDevelopmentAppKey(airshipAppKey)
-                  .setDevelopmentAppSecret(airshipAppSecret)
-                  .setInProduction(false)
+          AirshipConfigOptions.Builder optionsBuilder = AirshipConfigOptions.newBuilder();
+          if (inProduction) {
+            optionsBuilder.setProductionAppKey(airshipAppKey)
+                    .setProductionAppSecret(airshipAppSecret);
+          } else {
+            optionsBuilder.setDevelopmentAppKey(airshipAppKey)
+                    .setDevelopmentAppSecret(airshipAppSecret);
+          }
+          AirshipConfigOptions options = optionsBuilder
+                  .setInProduction(inProduction)
                   .build();
 
           UAirship.takeOff(application, options);
-          Log.d(TAG, "Airship takeOff completed");
+          logger.d("Airship takeOff completed");
 
           adapter = AirshipAdapter.shared(context);
 
-          adapter.setShouldTrackCustomEntryEvent(true);
-          adapter.setShouldTrackCustomExitEvent(true);
-          adapter.setShouldTrackRegionEvent(true);
+          configureAdapterSettings();
 
           adapter.restore();
+          isConfigured = true;
           result.success("Configured successfully");
         } catch (Exception e) {
-          Log.e(TAG, "Error configuring: " + e.getMessage(), e);
+          logger.e("Error configuring: " + e.getMessage(), e);
           result.error("CONFIG_ERROR", e.getMessage(), null);
         }
         break;
 
       case "start":
         try {
+          if (!isConfigured) {
+            result.error("NOT_CONFIGURED", "Must call configure() before start()", null);
+            return;
+          }
           if (adapter != null && gimbalKey != null) {
             String missingPermissions = getMissingPermissionsDescription(context);
             if (!missingPermissions.isEmpty()) {
-              Log.w(TAG, "Required permissions not granted. Missing: " + missingPermissions);
+              logger.w("Required permissions not granted. Missing: " + missingPermissions);
               result.error("PERMISSION_DENIED", "Required permissions not granted. Missing: " + missingPermissions, null);
               return;
             }
-            Log.d(TAG, "Gimbal isStarted: " + Gimbal.isStarted());
-            Log.d(TAG, "Gimbal API Key: " + gimbalKey);
-            Log.d(TAG, "All required permissions granted. Preparing listeners");
+            logger.d("Gimbal isStarted: " + Gimbal.isStarted());
+            logger.d("Gimbal API Key: " + gimbalKey);
+            logger.d("All required permissions granted. Preparing listeners");
 
             if (!listenersRegistered) {
               adapter.addListener(new AirshipAdapter.Listener() {
               @Override
               public void onRegionEntered(@NonNull com.urbanairship.analytics.location.RegionEvent event, @NonNull Visit visit) {
-                Log.d(TAG, "AirshipAdapter: Region entered - " + visit.getPlace().getName());
+                logger.d("AirshipAdapter: Region entered - " + visit.getPlace().getName());
                 sendEvent("AirshipAdapter: Entered place: " + visit.getPlace().getName());
               }
 
               @Override
               public void onRegionExited(@NonNull com.urbanairship.analytics.location.RegionEvent event, @NonNull Visit visit) {
-                Log.d(TAG, "AirshipAdapter: Region exited - " + visit.getPlace().getName());
+                logger.d("AirshipAdapter: Region exited - " + visit.getPlace().getName());
                 sendEvent("AirshipAdapter: Exited place: " + visit.getPlace().getName());
               }
 
@@ -138,28 +186,27 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
             adapter.restore();
             Gimbal.setApiKey((Application) context, gimbalKey);
             adapter.start(gimbalKey);
-            Log.d(TAG, "AirshipAdapter started");
-
-            Log.d(TAG, "Adapter started with listeners");
+            logger.d("AirshipAdapter started");
+            logger.d("Adapter started with listeners");
             result.success("Started");
           } else {
             result.error("NOT_CONFIGURED", "Adapter not configured or gimbalKey is null", null);
           }
         } catch (Exception e) {
-          Log.e(TAG, "Error starting: " + e.getMessage(), e);
+          logger.e("Error starting: " + e.getMessage(), e);
           result.error("START_ERROR", e.getMessage(), null);
         }
         break;
 
       case "restart":
         try {
-          if (adapter != null) {
+            if (adapter != null) {
             adapter.stop();
-            Log.d(TAG, "Adapter stopped for restart");
+            logger.d("Adapter stopped for restart");
           }
           result.success("Stopped");
         } catch (Exception e) {
-          Log.e(TAG, "Error restarting: " + e.getMessage(), e);
+          logger.e("Error restarting: " + e.getMessage(), e);
           result.error("RESTART_ERROR", e.getMessage(), null);
         }
         break;
@@ -168,35 +215,51 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
         try {
           if (adapter != null) {
             adapter.stop();
-            Log.d(TAG, "Adapter stopped");
+            logger.d("Adapter stopped");
             result.success("Stopped");
           } else {
             result.error("NOT_CONFIGURED", "Adapter not configured yet", null);
           }
         } catch (Exception e) {
-          Log.e(TAG, "Error stopping: " + e.getMessage(), e);
+          logger.e("Error stopping: " + e.getMessage(), e);
           result.error("STOP_ERROR", e.getMessage(), null);
         }
         break;
 
       default:
-        Log.w(TAG, "Unknown method: " + call.method);
+        logger.w("Unknown method: " + call.method);
         result.notImplemented();
     }
   }
 
+  private void configureAdapterSettings() {
+    if (adapter != null) {
+      adapter.setShouldTrackCustomEntryEvent(true);
+      adapter.setShouldTrackCustomExitEvent(true);
+      adapter.setShouldTrackRegionEvent(true);
+    }
+  }
+
   private void sendEvent(String message) {
-    Log.d(TAG, "Sending event: " + message);
+    logger.d("Sending event: " + message);
     if (eventSink != null) {
       eventSink.success(message);
     } else {
-      Log.w(TAG, "EventSink is null, cannot send event: " + message);
+      logger.w("EventSink is null, cannot send event: " + message);
+    }
+  }
+  
+  private void cleanupListeners() {
+    if (adapter != null && listenersRegistered) {
+      // Note: AirshipAdapter doesn't have removeListener, but adapter.stop() should handle it
+      listenersRegistered = false;
     }
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-    Log.d(TAG, "Plugin detached from engine");
+    logger.d("Plugin detached from engine");
+    cleanupListeners();
     if (methodChannel != null) {
       methodChannel.setMethodCallHandler(null);
     }
@@ -207,6 +270,7 @@ public class AirshipAdapterFlutterPlugin implements FlutterPlugin, MethodChannel
     eventChannel = null;
     eventSink = null;
     pluginBinding = null;
+    isConfigured = false;
   }
 
   /**

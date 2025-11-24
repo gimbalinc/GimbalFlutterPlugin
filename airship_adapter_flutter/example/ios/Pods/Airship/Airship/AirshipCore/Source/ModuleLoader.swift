@@ -11,7 +11,7 @@ public struct AirshiopModuleLoaderArgs {
     public let push: any AirshipPushProtocol
     public let remoteData: any RemoteDataProtocol
     public let analytics: any InternalAnalyticsProtocol&AirshipAnalyticsProtocol
-    public let privacyManager: AirshipPrivacyManager
+    public let privacyManager: any PrivacyManagerProtocol
     public let permissionsManager: AirshipPermissionsManager
     public let experimentsManager: any ExperimentDataProvider
     public let meteredUsage: AirshipMeteredUsage
@@ -19,6 +19,7 @@ public struct AirshiopModuleLoaderArgs {
     public let cache: any AirshipCache
     public let audienceChecker: any DeviceAudienceChecker
     public let workManager: any AirshipWorkManagerProtocol
+    public let inputValidator: any AirshipInputValidation.Validator
 
 }
 
@@ -47,14 +48,15 @@ class ModuleLoader {
         push: AirshipPush,
         remoteData: any RemoteDataProtocol,
         analytics: AirshipAnalytics,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         permissionsManager: AirshipPermissionsManager,
         audienceOverrides: any AudienceOverridesProvider,
         experimentsManager: any ExperimentDataProvider,
         meteredUsage: AirshipMeteredUsage,
         deferredResolver: any AirshipDeferredResolverProtocol,
         cache: any AirshipCache,
-        audienceChecker: any DeviceAudienceChecker
+        audienceChecker: any DeviceAudienceChecker,
+        inputValidator: any AirshipInputValidation.Validator
     ) {
 
         let args = AirshiopModuleLoaderArgs(
@@ -72,7 +74,8 @@ class ModuleLoader {
             deferredResolver: deferredResolver,
             cache: cache,
             audienceChecker: audienceChecker,
-            workManager: AirshipWorkManager.shared
+            workManager: AirshipWorkManager.shared,
+            inputValidator: inputValidator
         )
 
         let modules = ModuleLoader.loadModules(args)

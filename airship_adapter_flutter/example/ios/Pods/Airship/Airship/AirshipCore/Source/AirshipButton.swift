@@ -5,9 +5,9 @@ import SwiftUI
 
 /// Button view.
 struct AirshipButton<Label> : View  where Label : View {
-    @EnvironmentObject private var formState: FormState
+    @EnvironmentObject private var formState: ThomasFormState
     @EnvironmentObject private var pagerState: PagerState
-    @EnvironmentObject private var viewState: ViewState
+    @EnvironmentObject private var thomasState: ThomasState
     @EnvironmentObject private var thomasEnvironment: ThomasEnvironment
     @Environment(\.layoutState) private var layoutState
     @Environment(\.isButtonActionsEnabled) private var isButtonActionsEnabled
@@ -15,11 +15,14 @@ struct AirshipButton<Label> : View  where Label : View {
     let identifier: String
     let reportingMetadata: AirshipJSON?
     let description: String?
-    let clickBehaviors:[ThomasButtonClickBehavior]?
+    let clickBehaviors: [ThomasButtonClickBehavior]?
     let eventHandlers: [ThomasEventHandler]?
     let actions: ThomasActionsPayload?
     let tapEffect: ThomasButtonTapEffect?
     let label: () -> Label
+
+    @State
+    var isProcessing: Bool = false
 
     init(
         identifier: String,
@@ -45,41 +48,55 @@ struct AirshipButton<Label> : View  where Label : View {
         Button(
             action: {
                 if (isButtonActionsEnabled) {
-                    doButtonActions()
+                    Task { @MainActor in
+                        isProcessing = true
+                        await doButtonActions()
+                        isProcessing = false
+                    }
                 }
             },
             label: self.label
         )
         .optionalAccessibilityLabel(self.description)
         .buttonTapEffect(tapEffect ?? .default)
+        .disabled(isProcessing)
     }
 
-    private func doButtonActions() {
+    @MainActor
+    private func doButtonActions() async {
+        if clickBehaviors?.contains(.formSubmit) == true || clickBehaviors?.contains(.formValidate) == true {
+            guard await formState.validate() else { return }
+        }
+
         let taps = self.eventHandlers?.filter { $0.type == .tap }
+        if let taps, !taps.isEmpty {
+            /// Tap handlers
+            taps.forEach { tap in
+                handleStateActions(tap.stateActions)
+            }
+
+            // Workaround: Allows state to propagate before handling behaviors
+            await Task.yield()
+        }
 
         // Button reporting
         thomasEnvironment.buttonTapped(
             buttonIdentifier: self.identifier,
-            reportingMetatda: self.reportingMetadata,
+            reportingMetadata: self.reportingMetadata,
             layoutState: layoutState
         )
 
         // Buttons
-        handleBehaviors(self.clickBehaviors ?? [])
+        await handleBehaviors(self.clickBehaviors ?? [])
         handleActions(self.actions)
-
-        /// Tap handlers
-        taps?.forEach { tap in
-            handleStateActions(tap.stateActions)
-        }
     }
 
     private func handleBehaviors(
         _ behaviors: [ThomasButtonClickBehavior]?
-    ) {
-        behaviors?.sorted { first, second in
-            first.sortOrder < second.sortOrder
-        }.forEach { behavior in
+    ) async {
+        guard let behaviors else { return }
+
+        for behavior in behaviors {
             switch(behavior) {
             case .dismiss:
                 thomasEnvironment.dismiss(
@@ -98,10 +115,10 @@ struct AirshipButton<Label> : View  where Label : View {
                   )
 
             case .pagerNext:
-                pagerState.pageRequest = .next
+                pagerState.process(request: .next)
 
             case .pagerPrevious:
-                pagerState.pageRequest = .back
+                pagerState.process(request: .back)
 
             case .pagerNextOrDismiss:
                 if pagerState.isLastPage {
@@ -112,14 +129,14 @@ struct AirshipButton<Label> : View  where Label : View {
                         layoutState: layoutState
                     )
                 } else {
-                    pagerState.pageRequest = .next
+                    pagerState.process(request: .next)
                 }
 
             case .pagerNextOrFirst:
                 if pagerState.isLastPage {
-                    pagerState.pageRequest = .first
+                    pagerState.process(request: .first)
                 } else {
-                    pagerState.pageRequest = .next
+                    pagerState.process(request: .next)
                 }
 
             case .pagerPause:
@@ -128,10 +145,16 @@ struct AirshipButton<Label> : View  where Label : View {
             case .pagerResume:
                 pagerState.resume()
 
+            case .formValidate:
+                // Already handled above
+                break
+                
             case .formSubmit:
-                let formState = formState.topFormState
-                thomasEnvironment.submitForm(formState, layoutState: layoutState)
-                formState.markSubmitted()
+                do {
+                    try await formState.submit(layoutState: layoutState)
+                } catch {
+                    AirshipLogger.error("Failed to submit \(error)")
+                }
             }
         }
     }
@@ -143,19 +166,7 @@ struct AirshipButton<Label> : View  where Label : View {
     }
 
     private func handleStateActions(_ stateActions: [ThomasStateAction]) {
-        stateActions.forEach { action in
-            switch action {
-            case .setState(let details):
-                viewState.updateState(
-                    key: details.key,
-                    value: details.value?.unWrap()
-                )
-            case .clearState:
-                viewState.clearState()
-            case .formValue(_):
-                AirshipLogger.error("Unable to process form value")
-            }
-        }
+        thomasState.processStateActions(stateActions)
     }
 }
 
@@ -189,8 +200,6 @@ fileprivate extension View {
             self
         }
     }
-
-
 }
 
 #if os(tvOS)

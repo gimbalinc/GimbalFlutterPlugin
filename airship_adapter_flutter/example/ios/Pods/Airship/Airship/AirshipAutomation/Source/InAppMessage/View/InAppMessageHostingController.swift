@@ -86,7 +86,8 @@ class InAppMessageBannerViewController: InAppMessageHostingController<InAppMessa
 
         if UIAccessibility.isVoiceOverRunning {
             DispatchQueue.main.asyncAfter(deadline: .now() + InAppMessageBannerView.animationInOutDuration) {
-                UIAccessibility.post(notification: .screenChanged, argument: self)
+                self.view.accessibilityViewIsModal = true
+                UIAccessibility.post(notification: .screenChanged, argument: self.view)
             }
         }
 
@@ -113,6 +114,9 @@ class InAppMessageBannerViewController: InAppMessageHostingController<InAppMessa
     }
 
     func handleBannerConstraints(size: CGSize) {
+        // Ensure view is still in window hierarchy before updating constraints
+        guard self.view.window != nil else { return }
+
         self.centerXConstraint?.isActive = true
         self.heightConstraint?.isActive = true
         self.widthConstraint?.isActive = true

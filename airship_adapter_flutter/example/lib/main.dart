@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:airship_adapter_flutter/airship_adapter_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -57,10 +58,26 @@ class _MyAppState extends State<MyApp> {
 
       await AirshipAdapterFlutter.start();
       
-    } catch (e) {
-      if (e.toString().contains("Exception")) {
-        print(" This is an exception - check the error details above");
-      }
+    } on PlatformException catch (e) {
+      // Handle platform-specific errors
+      print("PlatformException: ${e.code} - ${e.message}");
+      print("Details: ${e.details}");
+      setState(() {
+        _logs.insert(0, "ERROR: ${e.code} - ${e.message ?? 'Unknown error'}");
+      });
+    } on ArgumentError catch (e) {
+      // Handle argument validation errors
+      print("ArgumentError: ${e.message}");
+      setState(() {
+        _logs.insert(0, "ERROR: Invalid arguments - ${e.message}");
+      });
+    } catch (e, stackTrace) {
+      // Handle any other errors
+      print("Exception: $e");
+      print("Stack trace: $stackTrace");
+      setState(() {
+        _logs.insert(0, "ERROR: $e");
+      });
     }
   }
 

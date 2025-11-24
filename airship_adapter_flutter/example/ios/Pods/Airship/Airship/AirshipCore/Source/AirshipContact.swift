@@ -71,26 +71,26 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
 
     private let dataStore: PreferenceDataStore
     private let config: RuntimeConfig
-    private let privacyManager: AirshipPrivacyManager
+    private let privacyManager: any PrivacyManagerProtocol
     private let contactChannelsProvider: any ContactChannelsProviderProtocol
     private let subscriptionListProvider: any SubscriptionListProviderProtocol
     private let date: any AirshipDateProtocol
     private let audienceOverridesProvider: any AudienceOverridesProvider
     private let contactManager: any ContactManagerProtocol
-    private var smsValidator: any SMSValidatorProtocol
     private let cachedSubscriptionLists: CachedValue<(String, [String: [ChannelScope]])>
     private var setupTask: Task<Void, Never>? = nil
     private var subscriptions: Set<AnyCancellable> = Set()
     private let serialQueue: AirshipAsyncSerialQueue
 
     /// Publishes all edits made to the subscription lists through the  SDK
+    @MainActor
     public var smsValidatorDelegate: (any SMSValidatorDelegate)? {
         set {
-            self.smsValidator.delegate = newValue
+            Airship.inputValidator.legacySMSDelegate = newValue
         }
 
         get {
-            self.smsValidator.delegate
+            Airship.inputValidator.legacySMSDelegate
         }
     }
 
@@ -153,18 +153,18 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
      * Internal only
      * :nodoc:
      */
+    @MainActor
     init(
         dataStore: PreferenceDataStore,
         config: RuntimeConfig,
         channel: any InternalAirshipChannelProtocol,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         contactChannelsProvider: any ContactChannelsProviderProtocol,
         subscriptionListProvider: any SubscriptionListProviderProtocol,
         date: any AirshipDateProtocol = AirshipDate.shared,
         notificationCenter: AirshipNotificationCenter = AirshipNotificationCenter.shared,
         audienceOverridesProvider: any AudienceOverridesProvider,
         contactManager: any ContactManagerProtocol,
-        smsValidator: any SMSValidatorProtocol,
         serialQueue: AirshipAsyncSerialQueue = AirshipAsyncSerialQueue(priority: .high)
     ) {
 
@@ -175,7 +175,6 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
         self.audienceOverridesProvider = audienceOverridesProvider
         self.date = date
         self.contactManager = contactManager
-        self.smsValidator = smsValidator
         self.serialQueue = serialQueue
         self.subscriptionListProvider = subscriptionListProvider
         self.cachedSubscriptionLists = CachedValue(date: date)
@@ -242,15 +241,15 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
 
         channel.addRegistrationExtender { [weak self] payload in
             await self?.setupTask?.value
-            var payload = payload
+            if await self?.contactID == nil {
+                await self?.contactManager.generateDefaultContactIDIfNotSet()
+            }
 
             if (channel.identifier != nil) {
                 payload.channel.contactID = await self?.getStableVerifiedContactID()
             } else {
                 payload.channel.contactID = await self?.contactID
             }
-
-            return payload
         }
 
         notificationCenter.addObserver(
@@ -313,11 +312,12 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
      * Internal only
      * :nodoc:
      */
+    @MainActor
     convenience init(
         dataStore: PreferenceDataStore,
         config: RuntimeConfig,
         channel: AirshipChannel,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         audienceOverridesProvider: any AudienceOverridesProvider,
         localeManager: any AirshipLocaleManagerProtocol
     ) {
@@ -341,8 +341,7 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
                 channel: channel,
                 localeManager: localeManager,
                 apiClient: ContactAPIClient(config: config)
-            ), 
-            smsValidator: SMSValidator(apiClient: SMSValidatorAPIClient(config: config))
+            )
         )
     }
 
@@ -508,16 +507,20 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
         _ msisdn: String,
         sender: String
     ) async throws -> Bool {
-        guard self.privacyManager.isEnabled(.contacts) else {
-            AirshipLogger.warn(
-                "Contacts disabled. Enable to validate SMS."
+        AirshipLogger.trace("Using depreacted validateSMS call \(msisdn), \(sender).")
+        
+        let request: AirshipInputValidation.Request = .sms(
+            AirshipInputValidation.Request.SMS(
+                rawInput: msisdn,
+                validationOptions: .sender(senderID: sender, prefix: nil),
+                validationHints: .init(minDigits: 4)
             )
-            throw AirshipErrors.error(
-                "Validation of SMS requires contacts to be enabled."
-            )
-        }
+        )
 
-        return try await self.smsValidator.validateSMS(msisdn:msisdn, sender: sender)
+        return switch(try await Airship.inputValidator.validateRequest(request)) {
+        case .valid: true
+        case .invalid: false
+        }
     }
 
     /// Associates an open channel to the contact.
@@ -680,7 +683,8 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
         let info = await waitForContactIDInfo(filter: { $0.isStable })
         return StableContactInfo(
             contactID: info.contactID,
-            namedUserID: info.namedUserID)
+            namedUserID: info.namedUserID
+        )
     }
 
     private func getStableVerifiedContactID() async -> String {
@@ -709,12 +713,14 @@ public final class AirshipContact: AirshipContactProtocol, @unchecked Sendable {
     @objc
     private func checkPrivacyManager() {
         self.serialQueue.enqueue {
-            guard !self.privacyManager.isEnabled(.contacts) else {
+            if self.privacyManager.isAnyFeatureEnabled(ignoringRemoteConfig: false) {
                 await self.contactManager.generateDefaultContactIDIfNotSet()
-                return
             }
 
-            await self.contactManager.addOperation(.reset)
+            guard self.privacyManager.isEnabled(.contacts) else {
+                await self.contactManager.resetIfNeeded()
+                return
+            }
         }
     }
 
@@ -881,20 +887,25 @@ extension AirshipContact : InternalAirshipContactProtocol {
     }
 }
 
-#if !os(watchOS)
 extension AirshipContact: AirshipPushableComponent {
-    public func receivedRemoteNotification(_ notification: AirshipJSON) async -> UIBackgroundFetchResult {
+    public func receivedRemoteNotification(_ notification: AirshipJSON) async -> UABackgroundFetchResult {
         guard
             let userInfo = notification.unwrapAsUserInfo(),
             userInfo[Self.refreshContactPushPayloadKey] != nil else {
             return .noData
         }
-        
+
         self.contactChannelsProvider.refreshAsync()
         return .newData
     }
-}
+
+#if !os(tvOS)
+    public func receivedNotificationResponse(_ response: UNNotificationResponse) async {
+        // no-op
+    }
 #endif
+
+}
 
 
 

@@ -5,11 +5,6 @@ public import SwiftUI
 
 extension View {
     @ViewBuilder
-    internal func ignoreKeyboardSafeArea() -> some View {
-        self.ignoresSafeArea(.keyboard)
-    }
-
-    @ViewBuilder
     internal func thomasToggleStyle(
         _ style: ThomasToggleStyleInfo,
         constraints: ViewConstraints
@@ -30,6 +25,7 @@ extension View {
             )
         }
     }
+    
     @ViewBuilder
     public func airshipApplyIf<Content: View>(
         _ predicate: @autoclosure () -> Bool,
@@ -43,7 +39,7 @@ extension View {
     }
 
     @ViewBuilder
-    func airshipGeometryGroupCompat() -> some View {
+    public func airshipGeometryGroupCompat() -> some View {
         if #available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *) {
             self.geometryGroup()
         } else {
@@ -65,15 +61,21 @@ extension View {
     @ViewBuilder
     internal func accessible(
         _ accessible: ThomasAccessibleInfo?,
+        associatedLabel: String?,
         fallbackContentDescription: String? = nil,
-        hideIfDescriptionIsMissing: Bool = true
+        hideIfDescriptionIsMissing: Bool
     ) -> some View {
-        let label = accessible?.resolveContentDescription ?? fallbackContentDescription
+        let contentDescription = accessible?.resolveContentDescription ?? fallbackContentDescription
         if accessible?.accessibilityHidden == true {
             self.accessibilityHidden(true)
-        } else if let label {
-            self.accessibility(label: Text(label))
-        } else if hideIfDescriptionIsMissing {
+        } else if let contentDescription, let associatedLabel {
+            self.accessibilityLabel(associatedLabel)
+                .accessibilityHint(contentDescription)
+        } else if let contentDescription {
+            self.accessibilityLabel(contentDescription)
+        } else if let associatedLabel {
+            self.accessibilityLabel(associatedLabel)
+        }else if hideIfDescriptionIsMissing {
             self.accessibilityHidden(true)
         } else {
             self
@@ -102,7 +104,7 @@ extension View {
 
     @ViewBuilder
     internal func thomasCommon(
-        _ info: some ThomasViewInfo.BaseInfo,
+        _ info: any ThomasViewInfo.BaseInfo,
         formInputID: String? = nil
     ) -> some View {
         self.thomasBackground(
@@ -111,6 +113,7 @@ extension View {
             border: info.commonProperties.border,
             borderOverrides: info.commonOverrides?.border
         )
+        .thomasStateTriggers(info.commonProperties.stateTriggers)
         .thomasEventHandlers(
             info.commonProperties.eventHandlers,
             formInputID: formInputID
@@ -216,4 +219,3 @@ struct AirshipViewModifierBuilder {
         }
     }
 }
-

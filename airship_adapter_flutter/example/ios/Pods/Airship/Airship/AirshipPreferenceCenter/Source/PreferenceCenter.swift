@@ -29,6 +29,8 @@ public final class PreferenceCenter: Sendable {
         return Airship.preferenceCenter
     }
 
+    let inputValidator: any AirshipInputValidation.Validator
+
     private static let payloadType = "preference_forms"
     private static let preferenceFormsKey = "preference_forms"
 
@@ -51,7 +53,7 @@ public final class PreferenceCenter: Sendable {
     }
 
     private let dataStore: PreferenceDataStore
-    private let privacyManager: AirshipPrivacyManager
+    private let privacyManager: any PrivacyManagerProtocol
     private let remoteData: any RemoteDataProtocol
 
     @MainActor
@@ -79,12 +81,14 @@ public final class PreferenceCenter: Sendable {
     @MainActor
     init(
         dataStore: PreferenceDataStore,
-        privacyManager: AirshipPrivacyManager,
-        remoteData: any RemoteDataProtocol
+        privacyManager: any PrivacyManagerProtocol,
+        remoteData: any RemoteDataProtocol,
+        inputValidator: any AirshipInputValidation.Validator
     ) {
         self.dataStore = dataStore
         self.privacyManager = privacyManager
         self.remoteData = remoteData
+        self.inputValidator = inputValidator
         self._theme.set(PreferenceCenterThemeLoader.defaultPlist())
         AirshipLogger.info("PreferenceCenter initialized")
     }
@@ -182,7 +186,7 @@ extension PreferenceCenter {
         theme: PreferenceCenterTheme?
     ) -> any AirshipMainActorCancellable {
 
-        var window: UIWindow? = UIWindow(windowScene: scene)
+        var window: UIWindow? = AirshipWindowFactory.shared.makeWindow(windowScene: scene)
 
         let cancellable = AirshipMainActorCancellableBlock {
             window?.windowLevel = .normal

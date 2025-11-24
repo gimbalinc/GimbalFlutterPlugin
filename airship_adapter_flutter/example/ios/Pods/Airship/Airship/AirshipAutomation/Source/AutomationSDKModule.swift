@@ -113,6 +113,7 @@ public class AutomationSDKModule: NSObject, AirshipSDKModule {
             engine: engine,
             inAppMessaging: inAppMessaging,
             legacyInAppMessaging: legacyInAppMessaging,
+            remoteData: args.remoteData,
             remoteDataSubscriber: remoteDataSubscriber,
             dataStore: args.dataStore,
             privacyManager: args.privacyManager,
@@ -131,7 +132,8 @@ fileprivate struct AutomationActionManifest : ActionsManifest {
     var manifest: [[String] : () -> ActionEntry] = [
         LandingPageAction.defaultNames: {
             return ActionEntry(
-                action: LandingPageAction()
+                action: LandingPageAction(),
+                predicate: LandingPageAction.defaultPredicate
             )
         }
     ]

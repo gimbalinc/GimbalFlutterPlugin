@@ -31,6 +31,12 @@ indirect enum ThomasViewInfo: ThomasSerializable {
     case toggle(Toggle)
     case stateController(StateController)
     case buttonLayout(ButtonLayout)
+    case basicToggleLayout(BasicToggleLayout)
+    case checkboxToggleLayout(CheckboxToggleLayout)
+    case radioInputToggleLayout(RadioInputToggleLayout)
+    case iconView(IconView)
+    case scoreController(ScoreController)
+    case scoreToggleLayout(ScoreToggleLayout)
 
     enum ViewType: String, Codable {
         case container
@@ -57,7 +63,14 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         case score
         case npsController = "nps_form_controller"
         case toggle
+        case basicToggleLayout = "basic_toggle_layout"
+        case checkboxToggleLayout = "checkbox_toggle_layout"
+        case radioInputToggleLayout = "radio_input_toggle_layout"
         case stateController = "state_controller"
+        case iconView = "icon_view"
+        case scoreController = "score_controller"
+        case scoreToggleLayout = "score_toggle_layout"
+
     }
 
     protocol BaseInfo: ThomasSerializable {
@@ -108,6 +121,12 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         case .stateController: .stateController(try StateController(from: decoder))
         case .customView: .customView(try CustomView(from: decoder))
         case .buttonLayout: .buttonLayout(try ButtonLayout(from: decoder))
+        case .basicToggleLayout: .basicToggleLayout(try BasicToggleLayout(from: decoder))
+        case .checkboxToggleLayout: .checkboxToggleLayout(try CheckboxToggleLayout(from: decoder))
+        case .radioInputToggleLayout: .radioInputToggleLayout(try RadioInputToggleLayout(from: decoder))
+        case .iconView: .iconView(try IconView(from: decoder))
+        case .scoreController: .scoreController(try ScoreController(from: decoder))
+        case .scoreToggleLayout: .scoreToggleLayout(try ScoreToggleLayout(from: decoder))
         }
     }
 
@@ -140,6 +159,12 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         case .toggle(let info): try info.encode(to: encoder)
         case .stateController(let info): try info.encode(to: encoder)
         case .buttonLayout(let info): try info.encode(to: encoder)
+        case .basicToggleLayout(let info): try info.encode(to: encoder)
+        case .checkboxToggleLayout(let info): try info.encode(to: encoder)
+        case .radioInputToggleLayout(let info): try info.encode(to: encoder)
+        case .iconView(let info): try info.encode(to: encoder)
+        case .scoreController(let info): try info.encode(to: encoder)
+        case .scoreToggleLayout(let info): try info.encode(to: encoder)
         }
     }
 
@@ -224,6 +249,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             var size: ThomasSize
             var margin: ThomasMargin?
             var view: ThomasViewInfo
+            var position: ThomasPosition?
         }
     }
 
@@ -310,12 +336,12 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         struct Properties: ThomasSerializable {
             let type: ViewType = .customView
             let name: String
-            let json: AirshipJSON?
+            let properties: AirshipJSON?
 
             private enum CodingKeys: String, CodingKey {
                 case type
                 case name
-                case json
+                case properties
             }
         }
     }
@@ -345,21 +371,63 @@ indirect enum ThomasViewInfo: ThomasSerializable {
 
         struct Overrides: ThomasSerializable {
             var text: [ThomasPropertyOverride<String>]?
+            var ref: [ThomasPropertyOverride<String>]?
+            var iconStart: [ThomasPropertyOverride<LabelIcon>]?
+
+            private enum CodingKeys: String, CodingKey {
+                case text
+                case iconStart = "icon_start"
+            }
+        }
+
+        enum IconType: String, Codable {
+            case type = "floating"
+        }
+
+        struct LabelIcon: ThomasSerializable {
+            var type: IconType
+            var icon: ThomasIconInfo
+            var space: Double
+        }
+
+        struct LabelAssociation: ThomasSerializable {
+            enum LabelAssociationTypes: String, ThomasSerializable {
+                case labels
+                case describes
+            }
+
+            var viewID: String
+            var type: LabelAssociationTypes
+            var viewType: ViewType
+
+            enum CodingKeys: String, CodingKey {
+                case viewID = "view_id"
+                case type
+                case viewType = "view_type"
+            }
         }
 
         struct Properties: ThomasSerializable {
             let type: ViewType = .label
             var text: String
+            var ref: String?
             var textAppearance: ThomasTextAppearance
             var markdown: ThomasMarkDownOptions?
             var accessibilityRole: AccessibilityRole?
+            var iconStart: LabelIcon?
+            var labels: LabelAssociation?
+            var isAccessibilityAlert: Bool?
 
             private enum CodingKeys: String, CodingKey {
                 case type
                 case text
+                case ref = "ref"
                 case textAppearance = "text_appearance"
                 case markdown
                 case accessibilityRole = "accessibility_role"
+                case iconStart = "icon_start"
+                case labels
+                case isAccessibilityAlert = "is_accessibility_alert"
             }
         }
 
@@ -419,6 +487,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             case image
             case video
             case youtube
+            case vimeo
         }
 
         struct Video: ThomasSerializable {
@@ -659,6 +728,26 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         }
     }
 
+    struct NubInfo: ThomasSerializable {
+        var size: ThomasSize
+        var margin: ThomasMargin?
+        var color: ThomasColor
+    }
+
+    struct CornerRadiusInfo: ThomasSerializable {
+        var topLeft: Double?
+        var topRight: Double?
+        var bottomLeft: Double?
+        var bottomRight: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case topLeft = "top_left"
+            case topRight = "top_right"
+            case bottomLeft = "bottom_left"
+            case bottomRight = "bottom_right"
+        }
+    }
+
     struct EmptyView: BaseInfo {
         var commonProperties: CommonViewProperties
         var commonOverrides: CommonViewOverrides?
@@ -670,6 +759,14 @@ indirect enum ThomasViewInfo: ThomasSerializable {
                 overrides: commonOverrides
             )
         }
+
+
+        init(commonProperties: CommonViewProperties, commonOverrides: CommonViewOverrides? = nil, properties: Properties) {
+            self.commonProperties = commonProperties
+            self.commonOverrides = commonOverrides
+            self.properties = properties
+        }
+
 
         init(from decoder: any Decoder) throws {
             self.commonProperties = try decoder.decodeProperties()
@@ -709,21 +806,25 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             let disableSwipe: Bool?
             let items: [Item]
             let gestures: [Gesture]?
+            let disableSwipePredicate: [DisableSwipeSelector]?
 
             enum CodingKeys: String, CodingKey {
                 case items = "items"
                 case disableSwipe = "disable_swipe"
                 case gestures = "gestures"
                 case type
+                case disableSwipePredicate = "disable_swipe_when"
             }
         }
 
-        struct Item: ThomasSerializable {
+        struct Item: ThomasSerializable, Identifiable {
             let identifier: String
             let view: ThomasViewInfo
             let displayActions: ThomasActionsPayload?
             let automatedActions: [ThomasAutomatedAction]?
             let accessibilityActions: [ThomasAccessibilityAction]?
+            let stateActions: [ThomasStateAction]?
+            let branching: ThomasPageBranching?
 
             enum CodingKeys: String, CodingKey {
                 case identifier = "identifier"
@@ -731,7 +832,45 @@ indirect enum ThomasViewInfo: ThomasSerializable {
                 case displayActions = "display_actions"
                 case automatedActions = "automated_actions"
                 case accessibilityActions = "accessibility_actions"
+                case stateActions = "state_actions"
+                case branching
             }
+            
+            var id: String { return identifier }
+        }
+        
+        struct DisableSwipeSelector: ThomasSerializable {
+            let predicate: JSONPredicate?
+            let direction: Direction
+            
+            enum CodingKeys: String, CodingKey {
+                case predicate = "when_state_matches"
+                case direction = "directions"
+            }
+            
+            private enum DirectionCodingKeys: String, CodingKey {
+                case type
+            }
+            
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                predicate = try container.decodeIfPresent(JSONPredicate.self, forKey: .predicate)
+                
+                let directionContainer = try container.nestedContainer(keyedBy: DirectionCodingKeys.self, forKey: .direction)
+                direction = try directionContainer.decode(Direction.self, forKey: .type)
+            }
+            
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encodeIfPresent(predicate, forKey: .predicate)
+                
+                var nested = container.nestedContainer(keyedBy: DirectionCodingKeys.self, forKey: .direction)
+                try nested.encode(direction, forKey: .type)
+            }
+        }
+        
+        enum Direction: String, ThomasSerializable {
+            case horizontal = "horizontal"
         }
 
         indirect enum Gesture: ThomasSerializable {
@@ -1018,11 +1157,13 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             let type: ViewType = .pagerController
             var view: ThomasViewInfo
             var identifier: String
+            let branching: ThomasPagerControllerBranching?
 
             enum CodingKeys: String, CodingKey {
                 case view = "view"
                 case identifier = "identifier"
                 case type
+                case branching
             }
         }
     }
@@ -1052,6 +1193,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             var view: ThomasViewInfo
             var responseType: String?
             var formEnableBehaviors: [ThomasEnableBehavior]?
+            var validationMode: ThomasFormValidationMode?
 
             enum CodingKeys: String, CodingKey {
                 case identifier = "identifier"
@@ -1060,6 +1202,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
                 case responseType = "response_type"
                 case formEnableBehaviors = "form_enabled"
                 case type
+                case validationMode = "validation_mode"
             }
         }
     }
@@ -1068,27 +1211,28 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         var commonProperties: CommonViewProperties
         var commonOverrides: CommonViewOverrides?
         var properties: Properties
-
+        
         func encode(to encoder: any Encoder) throws {
             try encoder.encode(
                 properties: commonProperties, properties,
                 overrides: commonOverrides
             )
         }
-
+        
         init(from decoder: any Decoder) throws {
             self.commonProperties = try decoder.decodeProperties()
             self.properties = try decoder.decodeProperties()
             self.commonOverrides = try decoder.decodeOverrides()
         }
-
+        
         struct Properties: ThomasSerializable {
             let type: ViewType = .stateController
             var view: ThomasViewInfo
-
+            var initialState: AirshipJSON?
             enum CodingKeys: String, CodingKey {
                 case view
                 case type
+                case initialState = "initial_state"
             }
         }
     }
@@ -1119,6 +1263,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             var view: ThomasViewInfo
             var responseType: String?
             var formEnableBehaviors: [ThomasEnableBehavior]?
+            var validationMode: ThomasFormValidationMode?
 
             enum CodingKeys: String, CodingKey {
                 case identifier
@@ -1128,6 +1273,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
                 case responseType = "response_type"
                 case formEnableBehaviors = "form_enabled"
                 case type
+                case validationMode = "validation_mode"
             }
         }
     }
@@ -1210,6 +1356,87 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         }
     }
 
+    struct ScoreController: BaseInfo {
+        var commonProperties: CommonViewProperties
+        var commonOverrides: CommonViewOverrides?
+
+        var properties: Properties
+        var accessible: ThomasAccessibleInfo
+        var validation: ThomasValidationInfo
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible, validation,
+                overrides: commonOverrides
+            )
+        }
+
+        init(from decoder: any Decoder) throws {
+            self.commonProperties = try decoder.decodeProperties()
+            self.properties = try decoder.decodeProperties()
+            self.accessible = try decoder.decodeProperties()
+            self.validation = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+        }
+
+        struct Properties: ThomasSerializable {
+            let type: ViewType = .radioInputController
+            var identifier: String
+            var view: ThomasViewInfo
+            var attributeName: ThomasAttributeName?
+
+            enum CodingKeys: String, CodingKey {
+                case identifier
+                case view
+                case attributeName = "attribute_name"
+                case type
+            }
+        }
+    }
+
+
+    struct ScoreToggleLayout: BaseInfo {
+        let properties: Properties
+        var commonProperties: CommonViewProperties
+        var commonOverrides: CommonViewOverrides?
+        var accessible: ThomasAccessibleInfo
+        var validation: ThomasValidationInfo
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible, validation,
+                overrides: commonOverrides
+            )
+        }
+
+        init(from decoder: any Decoder) throws {
+            self.properties = try decoder.decodeProperties()
+            self.commonProperties = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+            self.accessible = try decoder.decodeProperties()
+            self.validation = try decoder.decodeProperties()
+        }
+
+        struct Properties: ThomasSerializable {
+            var identifier: String
+            var attributeValue: ThomasAttributeValue?
+            var onToggleOn: ToggleActions
+            var onToggleOff: ToggleActions
+            var view: ThomasViewInfo
+            var reportingValue: AirshipJSON
+
+            private enum CodingKeys: String, CodingKey {
+                case identifier
+                case attributeValue = "attribute_value"
+                case onToggleOn = "on_toggle_on"
+                case onToggleOff = "on_toggle_off"
+                case view
+                case reportingValue = "reporting_value"
+            }
+        }
+    }
+
+
     struct TextInput: BaseInfo {
         var commonProperties: CommonViewProperties
         var properties: Properties
@@ -1251,6 +1478,8 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             var textAppearance: ThomasTextAppearance
             var inputType: TextInputType
             var iconEnd: IconEndInfo?
+            var emailRegistration: ThomasEmailRegistrationOption?
+            var smsLocales: [ThomasSMSLocale]?
 
             enum CodingKeys: String, CodingKey {
                 case attributeName = "attribute_name"
@@ -1260,6 +1489,8 @@ indirect enum ThomasViewInfo: ThomasSerializable {
                 case inputType = "input_type"
                 case type
                 case iconEnd = "icon_end"
+                case emailRegistration = "email_registration"
+                case smsLocales = "locales"
             }
         }
 
@@ -1276,8 +1507,10 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             case number
             case text
             case textMultiline = "text_multiline"
+            case sms
         }
     }
+
 
     struct Toggle: BaseInfo {
         var commonProperties: CommonViewProperties
@@ -1318,6 +1551,135 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         }
     }
 
+    struct ToggleActions: ThomasSerializable {
+        var stateActions: [ThomasStateAction]?
+
+        enum CodingKeys: String, CodingKey {
+            case stateActions = "state_actions"
+        }
+    }
+
+    struct BasicToggleLayout: BaseInfo {
+        let properties: Properties
+        var commonProperties: CommonViewProperties
+        var commonOverrides: CommonViewOverrides?
+        var accessible: ThomasAccessibleInfo
+        var validation: ThomasValidationInfo
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible, validation,
+                overrides: commonOverrides
+            )
+        }
+
+        init(from decoder: any Decoder) throws {
+            self.properties = try decoder.decodeProperties()
+            self.commonProperties = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+            self.accessible = try decoder.decodeProperties()
+            self.validation = try decoder.decodeProperties()
+        }
+
+        struct Properties: ThomasSerializable {
+            var identifier: String
+            var attributeName: ThomasAttributeName?
+            var attributeValue: ThomasAttributeValue?
+            var onToggleOn: ToggleActions
+            var onToggleOff: ToggleActions
+            var view: ThomasViewInfo
+
+            private enum CodingKeys: String, CodingKey {
+                case identifier
+                case attributeName = "attribute_name"
+                case attributeValue = "attribute_value"
+                case onToggleOn = "on_toggle_on"
+                case onToggleOff = "on_toggle_off"
+                case view
+            }
+        }
+    }
+
+    struct CheckboxToggleLayout: BaseInfo {
+        let properties: Properties
+        var commonProperties: CommonViewProperties
+        var commonOverrides: CommonViewOverrides?
+        var accessible: ThomasAccessibleInfo
+        var validation: ThomasValidationInfo
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible, validation,
+                overrides: commonOverrides
+            )
+        }
+
+        init(from decoder: any Decoder) throws {
+            self.properties = try decoder.decodeProperties()
+            self.commonProperties = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+            self.accessible = try decoder.decodeProperties()
+            self.validation = try decoder.decodeProperties()
+        }
+
+        struct Properties: ThomasSerializable {
+            var identifier: String
+            var onToggleOn: ToggleActions
+            var onToggleOff: ToggleActions
+            var view: ThomasViewInfo
+            var reportingValue: AirshipJSON
+
+            private enum CodingKeys: String, CodingKey {
+                case identifier
+                case onToggleOn = "on_toggle_on"
+                case onToggleOff = "on_toggle_off"
+                case view
+                case reportingValue = "reporting_value"
+            }
+        }
+    }
+
+    struct RadioInputToggleLayout: BaseInfo {
+        let properties: Properties
+        var commonProperties: CommonViewProperties
+        var commonOverrides: CommonViewOverrides?
+        var accessible: ThomasAccessibleInfo
+        var validation: ThomasValidationInfo
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible, validation,
+                overrides: commonOverrides
+            )
+        }
+
+        init(from decoder: any Decoder) throws {
+            self.properties = try decoder.decodeProperties()
+            self.commonProperties = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+            self.accessible = try decoder.decodeProperties()
+            self.validation = try decoder.decodeProperties()
+        }
+
+        struct Properties: ThomasSerializable {
+            var identifier: String
+            var attributeValue: ThomasAttributeValue?
+            var onToggleOn: ToggleActions
+            var onToggleOff: ToggleActions
+            var view: ThomasViewInfo
+            var reportingValue: AirshipJSON
+
+            private enum CodingKeys: String, CodingKey {
+                case identifier
+                case attributeValue = "attribute_value"
+                case onToggleOn = "on_toggle_on"
+                case onToggleOff = "on_toggle_off"
+                case view
+                case reportingValue = "reporting_value"
+            }
+        }
+    }
+    
     struct Checkbox: BaseInfo {
         var commonProperties: CommonViewProperties
         var commonOverrides: CommonViewOverrides?
@@ -1340,13 +1702,15 @@ indirect enum ThomasViewInfo: ThomasSerializable {
 
         struct Properties: ThomasSerializable {
             let type: ViewType = .checkbox
-            var reportingValue: String
+            var reportingValue: AirshipJSON
             var style: ThomasToggleStyleInfo
+            var identifier: String? // Added later so its treated as optional.
 
             enum CodingKeys: String, CodingKey {
                 case style
                 case reportingValue = "reporting_value"
                 case type
+                case identifier
             }
         }
     }
@@ -1373,12 +1737,14 @@ indirect enum ThomasViewInfo: ThomasSerializable {
 
         struct Properties: ThomasSerializable {
             let type: ViewType = .radioInput
-            var reportingValue: String
+            var reportingValue: AirshipJSON
             var style: ThomasToggleStyleInfo
             var attributeValue: ThomasAttributeValue?
+            var identifier: String? // Added later so its treated as optional.
 
             enum CodingKeys: String, CodingKey {
                 case style
+                case identifier
                 case reportingValue = "reporting_value"
                 case attributeValue = "attribute_value"
                 case type
@@ -1495,6 +1861,37 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         }
     }
 
+    struct IconView: BaseInfo {
+        var properties: Properties
+        var accessible: ThomasAccessibleInfo
+        var commonProperties: ThomasViewInfo.CommonViewProperties
+        var commonOverrides: ThomasViewInfo.CommonViewOverrides?
+        var overrides: Overrides?
+
+        init(from decoder: any Decoder) throws {
+            self.commonProperties = try decoder.decodeProperties()
+            self.properties = try decoder.decodeProperties()
+            self.accessible = try decoder.decodeProperties()
+            self.commonOverrides = try decoder.decodeOverrides()
+            self.overrides = try decoder.decodeOverrides()
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            try encoder.encode(
+                properties: commonProperties, properties, accessible,
+                overrides: commonOverrides, overrides
+            )
+        }
+
+        struct Properties: ThomasSerializable {
+            var icon: ThomasIconInfo
+        }
+
+        struct Overrides: ThomasSerializable {
+            var icon: [ThomasPropertyOverride<ThomasIconInfo>]?
+        }
+    }
+
     struct CommonViewOverrides: ThomasSerializable {
         var border: [ThomasPropertyOverride<ThomasBorder>]?
         var backgroundColor: [ThomasPropertyOverride<ThomasColor>]?
@@ -1511,6 +1908,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
         var visibility: ThomasVisibilityInfo?
         var eventHandlers: [ThomasEventHandler]?
         var enabled: [ThomasEnableBehavior]?
+        var stateTriggers: [ThomasStateTriggers]?
 
         enum CodingKeys: String, CodingKey {
             case border
@@ -1518,6 +1916,7 @@ indirect enum ThomasViewInfo: ThomasSerializable {
             case visibility
             case eventHandlers = "event_handlers"
             case enabled
+            case stateTriggers = "state_triggers"
         }
     }
 }

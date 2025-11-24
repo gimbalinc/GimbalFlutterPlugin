@@ -14,6 +14,13 @@ struct ThomasIconInfo: ThomasSerializable {
         case forwardArrow = "forward_arrow"
         case backArrow = "back_arrow"
         case exclamationmarkCircleFill = "exclamationmark_circle_fill"
+        case progressSpinner = "progress_spinner"
+        case asterisk
+        case asteriskCicleFill = "asterisk_circle_fill"
+        case star = "star"
+        case starFill = "star_fill"
+        case heart = "heart"
+        case heartFill = "heart_fill"
     }
 
     enum CodingKeys: String, CodingKey {

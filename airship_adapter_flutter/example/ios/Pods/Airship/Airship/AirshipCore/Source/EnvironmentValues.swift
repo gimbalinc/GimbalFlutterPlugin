@@ -23,10 +23,13 @@ private struct ButtonActionsEnabledKey: EnvironmentKey {
     static let defaultValue: Bool = true
 }
 
-private struct PagerPageIndexKey: EnvironmentKey {
-    static let defaultValue: Int = -1
+private struct PageIdentifierKey: EnvironmentKey {
+    static let defaultValue: String? = nil
 }
 
+private struct ThomasAssociatedLabelResolverKey: EnvironmentKey {
+    static let defaultValue: ThomasAssociatedLabelResolver? = nil
+}
 
 private struct LayoutStateEnvironmentKey: EnvironmentKey {
     static let defaultValue: LayoutState = LayoutState.empty
@@ -58,10 +61,16 @@ extension EnvironmentValues {
         set { self[ButtonActionsEnabledKey.self] = newValue }
     }
 
-    var pageIndex: Int {
-        get { self[PagerPageIndexKey.self] }
-        set { self[PagerPageIndexKey.self] = newValue }
+    var pageIdentifier: String? {
+        get { self[PageIdentifierKey.self] }
+        set { self[PageIdentifierKey.self] = newValue }
     }
+
+    var thomasAssociatedLabelResolver: ThomasAssociatedLabelResolver? {
+        get { self[ThomasAssociatedLabelResolverKey.self] }
+        set { self[ThomasAssociatedLabelResolverKey.self] = newValue }
+    }
+
 
     internal var layoutState: LayoutState {
         get { self[LayoutStateEnvironmentKey.self] }

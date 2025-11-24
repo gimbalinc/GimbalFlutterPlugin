@@ -5,18 +5,94 @@ import SwiftUI
 
 
 struct Icons {
-    private static func createImage(icon: ThomasIconInfo.Icon) -> Image {
+
+    @MainActor
+    private static func makeSystemImageIcon(
+        name: String,
+        resizable: Bool,
+        color: Color
+    ) -> some View {
+        Image(systemName: name)
+            .airshipApplyIf(resizable) { view in view.resizable() }
+            .foregroundColor(color)
+    }
+
+    @MainActor
+    @ViewBuilder
+    private static func makeView(
+        icon: ThomasIconInfo.Icon,
+        resizable: Bool,
+        color: Color
+    ) -> some View {
         switch icon {
+        case .asterisk:
+            makeSystemImageIcon(
+                name: "asterisk",
+                resizable: resizable,
+                color: color
+            )
+        case .asteriskCicleFill:
+            makeSystemImageIcon(
+                name: "asterisk.circle.fill",
+                resizable: resizable,
+                color: color
+            )
         case .checkmark:
-            return Image(systemName: "checkmark")
+            makeSystemImageIcon(
+                name: "checkmark",
+                resizable: resizable,
+                color: color
+            )
         case .close:
-            return Image(systemName: "xmark")
+            makeSystemImageIcon(
+                name: "xmark",
+                resizable: resizable,
+                color: color
+            )
         case .backArrow:
-            return Image(systemName: "arrow.backward")
+            makeSystemImageIcon(
+                name: "arrow.backward",
+                resizable: resizable,
+                color: color
+            )
         case .forwardArrow:
-            return Image(systemName: "arrow.forward")
+            makeSystemImageIcon(
+                name: "arrow.forward",
+                resizable: resizable,
+                color: color
+            )
         case .exclamationmarkCircleFill:
-            return Image(systemName: "exclamationmark.circle.fill")
+            makeSystemImageIcon(
+                name: "exclamationmark.circle.fill",
+                resizable: resizable,
+                color: color
+            )
+        case .star:
+            makeSystemImageIcon(
+                name: "star",
+                resizable: resizable,
+                color: color
+            )
+        case .starFill:
+            makeSystemImageIcon(
+                name: "star.fill",
+                resizable: resizable,
+                color: color
+            )
+        case .heart:
+            makeSystemImageIcon(
+                name: "heart",
+                resizable: resizable,
+                color: color
+            )
+        case .heartFill:
+            makeSystemImageIcon(
+                name: "heart.fill",
+                resizable: resizable,
+                color: color
+            )
+        case .progressSpinner:
+            ProgressView().tint(color)
         }
     }
 
@@ -27,14 +103,14 @@ struct Icons {
         colorScheme: ColorScheme,
         resizable: Bool = true
     ) -> some View {
-        createImage(icon: info.icon)
-            .airshipApplyIf(resizable) { view in
-                view.resizable()
-            }
-            .aspectRatio(contentMode: .fit)
-            .foregroundColor(info.color.toColor(colorScheme))
-            .airshipApplyIf(info.scale != nil) { view in
-                view.scaleEffect(info.scale ?? 1)
-            }
+        makeView(
+            icon: info.icon,
+            resizable: resizable,
+            color: info.color.toColor(colorScheme)
+        )
+        .aspectRatio(contentMode: .fit)
+        .airshipApplyIf(info.scale != nil) { view in
+            view.scaleEffect(info.scale ?? 1)
+        }
     }
 }

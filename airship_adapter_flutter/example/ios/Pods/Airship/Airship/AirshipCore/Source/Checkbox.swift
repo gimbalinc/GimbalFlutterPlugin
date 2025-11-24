@@ -3,45 +3,53 @@
 import Foundation
 import SwiftUI
 
-
+@MainActor
 struct Checkbox: View {
     let info: ThomasViewInfo.Checkbox
     let constraints: ViewConstraints
-    @EnvironmentObject var formState: FormState
+    @EnvironmentObject var formState: ThomasFormState
     @EnvironmentObject var checkboxState: CheckboxState
+    @EnvironmentObject var thomasState: ThomasState
 
-    @ViewBuilder
-    private func createToggle() -> some View {
-        let isOn = Binding<Bool>(
-            get: {
-                self.checkboxState.selectedItems.contains(self.info.properties.reportingValue)
-            },
-            set: {
-                if $0 {
-                    self.checkboxState.selectedItems.insert(self.info.properties.reportingValue)
-                } else {
-                    self.checkboxState.selectedItems.remove(self.info.properties.reportingValue)
-                }
-            }
+    @Environment(\.thomasAssociatedLabelResolver) var associatedLabelResolver
+
+    private var associatedLabel: String? {
+        associatedLabelResolver?.labelFor(
+            identifier: info.properties.identifier,
+            viewType: .checkbox,
+            thomasState: thomasState
+        )
+    }
+
+    private var isOnBinding: Binding<Bool> {
+        self.checkboxState.makeBinding(
+            identifier: nil,
+            reportingValue: info.properties.reportingValue
+        )
+    }
+
+    private var isEnabled: Bool {
+        let isSelected = self.checkboxState.isSelected(
+            reportingValue: info.properties.reportingValue
         )
 
-        Toggle(isOn: isOn.animation()) {}
+        return isSelected || !self.checkboxState.isMaxSelectionReached
+    }
+
+    var body: some View {
+        Toggle(isOn: self.isOnBinding.animation()) {}
             .thomasToggleStyle(
                 self.info.properties.style,
                 constraints: self.constraints
             )
-    }
-
-    var body: some View {
-        let enabled =
-        self.checkboxState.selectedItems.contains(self.info.properties.reportingValue)
-            || self.checkboxState.selectedItems.count
-                < self.checkboxState.maxSelection
-        createToggle()
             .constraints(constraints)
             .thomasCommon(self.info)
-            .accessible(self.info.accessible)
+            .accessible(
+                self.info.accessible,
+                associatedLabel: associatedLabel,
+                hideIfDescriptionIsMissing: false
+            )
             .formElement()
-            .disabled(!enabled)
+            .disabled(!self.isEnabled)
     }
 }

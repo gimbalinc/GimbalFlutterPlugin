@@ -7,65 +7,128 @@ struct CheckboxController: View {
     let info: ThomasViewInfo.CheckboxController
     let constraints: ViewConstraints
 
-    @EnvironmentObject var formState: FormState
-    @StateObject var checkboxState: CheckboxState
-
-    init(info: ThomasViewInfo.CheckboxController, constraints: ViewConstraints) {
-        self.info = info
-        self.constraints = constraints
-        self._checkboxState = StateObject(
-            wrappedValue: CheckboxState(
-                minSelection: info.properties.minSelection,
-                maxSelection: info.properties.maxSelection
-            )
-        )
-    }
+    @EnvironmentObject var environment: ThomasEnvironment
 
     var body: some View {
-        ViewFactory.createView(self.info.properties.view, constraints: constraints)
-            .constraints(constraints)
-            .thomasCommon(self.info, formInputID: self.info.properties.identifier)
-            .accessible(self.info.accessible)
-            .formElement()
-            .environmentObject(checkboxState)
-            .airshipOnChangeOf(self.checkboxState.selectedItems) { incoming in
-                updateFormState(incoming)
-            }
-            .onAppear {
-                restoreFormState()
-            }
+        Content(
+            info: self.info,
+            constraints: constraints,
+            environment: environment
+        )
+        .id(info.properties.identifier)
     }
 
-    private func restoreFormState() {
-        let formValue = self.formState.data.formValue(
-            identifier: self.info.properties.identifier
-        )
+    @MainActor
+    struct Content: View {
+        let info: ThomasViewInfo.CheckboxController
+        let constraints: ViewConstraints
 
-        guard case let .multipleCheckbox(value) = formValue,
-            let value = value
-        else {
-            updateFormState(self.checkboxState.selectedItems)
-            return
+        @Environment(\.pageIdentifier) var pageID
+        @EnvironmentObject var formDataCollector: ThomasFormDataCollector
+        @EnvironmentObject var formState: ThomasFormState
+        @EnvironmentObject var thomasState: ThomasState
+        @ObservedObject var checkboxState: CheckboxState
+        @EnvironmentObject var validatableHelper: ValidatableHelper
+        @Environment(\.thomasAssociatedLabelResolver) var associatedLabelResolver
+
+        private var associatedLabel: String? {
+            associatedLabelResolver?.labelFor(
+                identifier: info.properties.identifier,
+                viewType: .checkboxController,
+                thomasState: thomasState
+            )
         }
 
-        self.checkboxState.selectedItems = Set<String>(value)
-    }
+        init(
+            info: ThomasViewInfo.CheckboxController,
+            constraints: ViewConstraints,
+            environment: ThomasEnvironment
+        ) {
+            self.info = info
+            self.constraints = constraints
 
-    private func updateFormState(_ value: Set<String>) {
-        let selected = Array(value)
-        let isFilled =
-        selected.count >= (info.properties.minSelection ?? 0)
-            && selected.count
-        <= (info.properties.maxSelection ?? Int.max)
+            // Use the environment to create or retrieve the state in case the view
+            // stack changes and we lose our state.
+            let checkboxState = environment.retrieveState(identifier: info.properties.identifier) {
+                CheckboxState(
+                    minSelection: info.properties.minSelection,
+                    maxSelection: info.properties.maxSelection
+                )
+            }
 
-        let isValid = isFilled || (selected.count == 0 && info.validation.isRequired == false)
+            self._checkboxState = ObservedObject(wrappedValue: checkboxState)
+        }
 
-        let data = FormInputData(
-            self.info.properties.identifier,
-            value: .multipleCheckbox(selected),
-            isValid: isValid
-        )
+        var body: some View {
+            ViewFactory.createView(self.info.properties.view, constraints: constraints)
+                .constraints(constraints)
+                .thomasCommon(self.info, formInputID: self.info.properties.identifier)
+                .accessible(
+                    self.info.accessible,
+                    associatedLabel: associatedLabel,
+                    hideIfDescriptionIsMissing: false
+                )
+                .formElement()
+                .environmentObject(checkboxState)
+                .airshipOnChangeOf(self.checkboxState.selected) { incoming in
+                    updateFormState(selected: incoming)
+                }
+                .onAppear {
+                    updateFormState(selected: self.checkboxState.selected)
+                    if self.formState.validationMode == .onDemand {
+                        validatableHelper.subscribe(
+                            forIdentifier: info.properties.identifier,
+                            formState: formState,
+                            initialValue: checkboxState.selected,
+                            valueUpdates: checkboxState.$selected,
+                            validatables: info.validation
+                        ) { [weak thomasState, weak checkboxState] actions in
+                            guard let thomasState, let checkboxState else { return }
+                            thomasState.processStateActions(
+                                actions,
+                                formFieldValue: .multipleCheckbox(
+                                    Set(checkboxState.selected.map { $0.reportingValue })
+                                )
+                            )
+                        }
+                    }
+                }
+        }
 
-        formState.updateFormInput(data)
+        private func checkValid(_ value: Set<AirshipJSON>) -> Bool {
+            let min = info.properties.minSelection ?? 0
+            let max = info.properties.maxSelection ?? Int.max
+
+            guard value.count >= min, value.count <= max else {
+                return false
+            }
+
+            guard !value.isEmpty else {
+                return info.validation.isRequired != true
+            }
+
+            return true
+        }
+
+        private func updateFormState(selected: Set<CheckboxState.Selected>) {
+            let value = Set(selected.map { $0.reportingValue })
+            let formValue: ThomasFormField.Value = .multipleCheckbox(value)
+            let field: ThomasFormField = if checkValid(value) {
+                ThomasFormField.validField(
+                    identifier: self.info.properties.identifier,
+                    input: formValue,
+                    result: .init(
+                        value: formValue
+                    )
+                )
+            } else {
+                ThomasFormField.invalidField(
+                    identifier: self.info.properties.identifier,
+                    input: formValue
+                )
+            }
+
+            self.formDataCollector.updateField(field, pageID: pageID)
+        }
     }
 }

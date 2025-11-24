@@ -10,19 +10,39 @@ import UIKit
 @MainActor
 class ThomasEnvironment: ObservableObject {
     private let delegate: any ThomasDelegate
+    private let pagerTracker: ThomasPagerTracker
+    private let timer: any AirshipTimerProtocol
     let extensions: ThomasExtensions?
     let imageLoader: AirshipImageLoader
-    let defaultFormState = FormState(identifier: "",
-                                     formType: .form,
-                                     formResponseType: "")
 
-    let defaultViewState = ViewState()
+    let defaultFormState = ThomasFormState(
+        identifier: "",
+        formType: .form,
+        formResponseType: "",
+        validationMode: .immediate
+    )
 
-    let defaultPagerState = PagerState(identifier: "")
+    let defaultPagerState = PagerState(
+        identifier: "",
+        branching: nil
+    )
+    let defaultMutableState = ThomasState.MutableState()
 
+    private var state: [String: Any] = [:]
+
+    func retrieveState<T: ObservableObject>(identifier: String, create: () -> T) -> T {
+        let key = "\(identifier):\(T.self)"
+        guard let existing = self.state[key] as? T else {
+            let new = create()
+            state[key] = new
+            return new
+        }
+        return existing
+    }
 
     @Published
     var isDismissed = false
+
     @Published
     var focusedID: String? = nil
 
@@ -30,17 +50,20 @@ class ThomasEnvironment: ObservableObject {
 
     private var subscriptions: Set<AnyCancellable> = Set()
 
-    @Published private(set) var keyboardHeight: Double = 0
     @Published private(set) var keyboardState: KeyboardState = .hidden
 
     @MainActor
     init(
         delegate: any ThomasDelegate,
         extensions: ThomasExtensions?,
+        pagerTracker: ThomasPagerTracker? = nil,
+        timer: (any AirshipTimerProtocol)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         self.delegate = delegate
         self.extensions = extensions
+        self.pagerTracker = pagerTracker ?? ThomasPagerTracker()
+        self.timer = timer ?? AirshipTimer()
         self.onDismiss = onDismiss
         self.imageLoader = AirshipImageLoader(
             imageProvider: extensions?.imageProvider
@@ -51,74 +74,153 @@ class ThomasEnvironment: ObservableObject {
     }
 
     @MainActor
-    func onVisbilityChanged(isVisible: Bool, isForegrounded: Bool) {
-        self.delegate.onVisbilityChanged(isVisible: isVisible, isForegrounded: isForegrounded)
+    func onVisibilityChanged(isVisible: Bool, isForegrounded: Bool) {
+        if isVisible, isForegrounded {
+            timer.start()
+        } else {
+            timer.stop()
+        }
+
+        self.delegate.onVisibilityChanged(
+            isVisible: isVisible,
+            isForegrounded: isForegrounded
+        )
     }
 
     @MainActor
-    func submitForm(_ formState: FormState, layoutState: LayoutState) {
-        guard !formState.isSubmitted else {
-            return
-        }
-
-        self.delegate.onFormSubmitted(
-            formResult: formState.toFormResult(),
-            layoutContext: layoutState.toLayoutContext()
+    func submitForm(
+        result: ThomasFormResult,
+        channels: [ThomasFormField.Channel],
+        attributes: [ThomasFormField.Attribute],
+        layoutState: LayoutState
+    ) {
+        self.delegate.onReportingEvent(
+            .formResult(
+                .init(forms: result.formData),
+                makeLayoutContext(layoutState: layoutState)
+            )
         )
 
+        applyAttributes(attributes)
+        registerChannels(channels)
+    }
+
+    private func registerChannels(
+        _ channels: [ThomasFormField.Channel]
+    ) {
+        channels.forEach { channelRegistration in
+            switch(channelRegistration) {
+            case .email(let address, let options):
+                Airship.contact.registerEmail(
+                    address,
+                    options: options.makeContactOptions()
+                )
+            case .sms(let address, let options):
+                Airship.contact.registerSMS(
+                    address,
+                    options: options.makeContactOptions()
+                )
+            }
+            
+        }
+    }
+
+    private func applyAttributes(
+        _ attributes: [ThomasFormField.Attribute]
+    ) {
+        guard !attributes.isEmpty else { return }
         let channelEditor = Airship.channel.editAttributes()
         let contactEditor = Airship.contact.editAttributes()
 
-        formState.data.attributes()
-            .forEach {
-                let attributeName = $0.0
-                let attributeValue = $0.1
+        attributes.forEach { attribute in
 
-                if let attribute = attributeName.channel {
-                    channelEditor.set(
-                        attributeValue: attributeValue,
-                        attribute: attribute
-                    )
-                }
-
-                if let attribute = attributeName.contact {
-                    contactEditor.set(
-                        attributeValue: attributeValue,
-                        attribute: attribute
-                    )
-                }
+            if let name = attribute.attributeName.channel {
+                channelEditor.set(
+                    attributeValue: attribute.attributeValue,
+                    attribute: name
+                )
             }
+
+            if let name = attribute.attributeName.contact {
+                contactEditor.set(
+                    attributeValue: attribute.attributeValue,
+                    attribute: name
+                )
+            }
+        }
 
         channelEditor.apply()
         contactEditor.apply()
     }
 
     @MainActor
-    func formDisplayed(_ formState: FormState, layoutState: LayoutState) {
-        self.delegate.onFormDisplayed(
-            formInfo: formState.toFormInfo(),
-            layoutContext: layoutState.toLayoutContext()
+    func formDisplayed(_ formState: ThomasFormState, layoutState: LayoutState) {
+        self.delegate.onReportingEvent(
+            .formDisplay(
+                .init(
+                    identifier: formState.identifier,
+                    formType: formState.formTypeString
+                ),
+                makeLayoutContext(layoutState: layoutState)
+            )
         )
     }
 
     @MainActor
     func buttonTapped(
         buttonIdentifier: String,
-        reportingMetatda: AirshipJSON?,
+        reportingMetadata: AirshipJSON?,
         layoutState: LayoutState
     ) {
-        self.delegate.onButtonTapped(
-            buttonIdentifier: buttonIdentifier,
-            metadata: reportingMetatda,
-            layoutContext: layoutState.toLayoutContext()
+        self.delegate.onReportingEvent(
+            .buttonTap(
+                .init(
+                    identifier: buttonIdentifier,
+                    reportingMetadata: reportingMetadata
+                ),
+                makeLayoutContext(layoutState: layoutState)
+            )
         )
     }
 
     @MainActor
-    func pageViewed(_ pagerState: PagerState, layoutState: LayoutState) {
-        self.delegate.onPageViewed(
-            pagerInfo: pagerState.toPagerInfo(),
-            layoutContext: layoutState.toLayoutContext()
+    func pageViewed(
+        pagerState: PagerState,
+        pageInfo: ThomasPageInfo,
+        layoutState: LayoutState
+    ) {
+        let pageViewedEvent = ThomasReportingEvent.PageViewEvent(
+            identifier: pagerState.identifier,
+            pageIdentifier: pageInfo.identifier,
+            pageIndex: pageInfo.index,
+            pageViewCount: pageInfo.viewCount,
+            pageCount: pagerState.reportingPageCount,
+            completed: pagerState.completed
+        )
+        pagerTracker.onPageView(pageEvent: pageViewedEvent, currentDisplayTime: timer.time)
+        self.delegate.onReportingEvent(
+            .pageView(
+                pageViewedEvent,
+                makeLayoutContext(layoutState: layoutState)
+            )
+        )
+    }
+
+    @MainActor
+    func pagerCompleted(
+        pagerState: PagerState,
+        layoutState: LayoutState
+    ) {
+        self.delegate.onReportingEvent(
+            .pagerCompleted(
+                .init(
+                    identifier: pagerState.identifier,
+                    pageIndex: pagerState.pageIndex,
+                    pageCount: pagerState.reportingPageCount,
+                    pageIdentifier: pagerState.currentPageId ?? ""
+                ),
+                makeLayoutContext(layoutState: layoutState)
+            )
         )
     }
 
@@ -129,46 +231,64 @@ class ThomasEnvironment: ObservableObject {
         cancel: Bool,
         layoutState: LayoutState
     ) {
-        tryDismiss {
-            self.delegate.onDismissed(
-                buttonIdentifier: buttonIdentifier,
-                buttonDescription: buttonDescription,
-                cancel: cancel,
-                layoutContext: layoutState.toLayoutContext()
+        tryDismiss { displayTime in
+            self.delegate.onReportingEvent(
+                .dismiss(
+                    .buttonTapped(
+                        identifier: buttonIdentifier,
+                        description: buttonDescription
+                    ),
+                    displayTime,
+                    makeLayoutContext(layoutState: layoutState)
+                )
             )
+            self.delegate.onDismissed(cancel: cancel)
         }
     }
 
     @MainActor
     func dismiss(cancel: Bool = false, layoutState: LayoutState? = nil) {
-        tryDismiss {
-            self.delegate.onDismissed(
-                cancel: cancel,
-                layoutContext: layoutState?.toLayoutContext()
+        tryDismiss { displayTime in
+            self.delegate.onReportingEvent(
+                .dismiss(
+                    .userDismissed,
+                    displayTime,
+                    makeLayoutContext(layoutState: layoutState)
+                )
             )
+            self.delegate.onDismissed(cancel: cancel)
         }
     }
 
     @MainActor
     func timedOut(layoutState: LayoutState? = nil) {
-        tryDismiss {
-            self.delegate.onTimedOut(
-                layoutContext: layoutState?.toLayoutContext()
+        tryDismiss { displayTime in
+            self.delegate.onReportingEvent(
+                .dismiss(
+                    .timedOut,
+                    displayTime,
+                    makeLayoutContext(layoutState: layoutState)
+                )
             )
+            self.delegate.onDismissed(cancel: false)
         }
     }
     
     @MainActor
     func pageGesture(
         identifier: String?,
-        reportingMetatda: AirshipJSON?,
+        reportingMetadata: AirshipJSON?,
         layoutState: LayoutState
     ) {
         if let identifier {
-            self.delegate.onPageGesture(
-                identifier: identifier,
-                metadata: reportingMetatda,
-                layoutContext: layoutState.toLayoutContext()
+            self.delegate.onReportingEvent(
+                .gesture(
+                    .init(
+                        identifier: identifier,
+                        reportingMetadata: reportingMetadata
+                    ),
+                    makeLayoutContext(layoutState: layoutState)
+                )
             )
         }
     }
@@ -176,44 +296,80 @@ class ThomasEnvironment: ObservableObject {
     @MainActor
     func pageAutomated(
         identifier: String?,
-        reportingMetatda: AirshipJSON?,
+        reportingMetadata: AirshipJSON?,
         layoutState: LayoutState
     ) {
         if let identifier {
-            self.delegate.onPageAutomatedAction(
-                identifier: identifier,
-                metadata: reportingMetatda,
-                layoutContext: layoutState.toLayoutContext()
+            self.delegate.onReportingEvent(
+                .pageAction(
+                    .init(
+                        identifier: identifier,
+                        reportingMetadata: reportingMetadata
+                    ),
+                    makeLayoutContext(layoutState: layoutState)
+                )
             )
         }
     }
     
     @MainActor
     func pageSwiped(
-        _ pagerState: PagerState,
-        fromIndex: Int,
-        toIndex: Int,
+        pagerState: PagerState,
+        from: ThomasPageInfo,
+        to: ThomasPageInfo,
         layoutState: LayoutState
     ) {
-        self.delegate.onPageSwiped(
-            from: pagerState.toPagerInfo(index: fromIndex),
-            to: pagerState.toPagerInfo(index: toIndex),
-            layoutContext: layoutState.toLayoutContext()
+        self.delegate.onReportingEvent(
+            .pageSwipe(
+                .init(
+                    identifier: pagerState.identifier,
+                    toPageIndex: to.index,
+                    toPageIdentifier: to.identifier,
+                    fromPageIndex: from.index,
+                    fromPageIdentifier: from.identifier
+                ),
+                makeLayoutContext(layoutState: layoutState)
+            )
         )
     }
 
     @MainActor
-    private func tryDismiss(callback: () -> Void) {
+    func onStateChange(_ state: AirshipJSON) {
+        self.delegate.onStateChanged(state)
+    }
+
+    private func emitPagerSummaryEvents() {
+        pagerTracker.summary.forEach { summary in
+            delegate.onReportingEvent(
+                .pagerSummary(
+                    summary,
+                    makeLayoutContext(layoutState: nil)
+                )
+            )
+        }
+    }
+
+    @MainActor
+    private func tryDismiss(callback: (TimeInterval) -> Void) {
         if !self.isDismissed {
             self.isDismissed = true
-            callback()
+
+            timer.stop()
+            
+            pagerTracker.stopAll(currentDisplayTime: timer.time)
+            emitPagerSummaryEvents()
+
+            callback(timer.time)
             onDismiss?()
             self.onDismiss = nil
         }
     }
 
     @MainActor
-    func runActions(_ actionsPayload: ThomasActionsPayload?, layoutState: LayoutState?) {
+    func runActions(
+        _ actionsPayload: ThomasActionsPayload?,
+        layoutState: LayoutState?
+    ) {
         guard let actionsPayload = actionsPayload?.value else { return }
         guard let runner = extensions?.actionRunner else {
             Task {
@@ -224,12 +380,16 @@ class ThomasEnvironment: ObservableObject {
 
         runner.runAsync(
             actions: actionsPayload,
-            layoutContext: layoutState?.toLayoutContext()
+            layoutContext: makeLayoutContext(layoutState: layoutState)
         )
     }
 
     @MainActor
-    func runAction(_ actionName: String, arguments: ActionArguments, layoutState: LayoutState?) async -> ActionResult {
+    func runAction(
+        _ actionName: String,
+        arguments: ActionArguments,
+        layoutState: LayoutState?
+    ) async -> ActionResult {
         guard let runner = extensions?.actionRunner else {
             return await ActionRunner.run(actionName: actionName, arguments: arguments)
         }
@@ -237,38 +397,46 @@ class ThomasEnvironment: ObservableObject {
         return await runner.run(
             actionName: actionName,
             arguments: arguments,
-            layoutContext: layoutState?.toLayoutContext()
+            layoutContext: makeLayoutContext(layoutState: layoutState)
         )
+    }
+
+    private func makeLayoutContext(layoutState: LayoutState?) -> ThomasLayoutContext {
+        var context = ThomasLayoutContext()
+        if let pager = layoutState?.pagerState {
+            context.pager = .init(
+                identifier: pager.identifier,
+                pageIdentifier: pager.currentPageId ?? "",
+                pageIndex: pager.pageIndex,
+                completed: pager.completed,
+                count: pager.reportingPageCount,
+                pageHistory: pagerTracker.viewedPages(
+                    pagerIdentifier: pager.identifier
+                )
+            )
+        }
+
+        if let form = layoutState?.formState {
+            context.form = .init(
+                identifier: form.identifier,
+                submitted: form.status == .submitted,
+                type: form.formTypeString,
+                responseType: form.formResponseType
+            )
+        }
+
+        if let form = layoutState?.buttonState {
+            context.button = .init(
+                identifier: form.identifier
+            )
+        }
+
+        return context
     }
 
     #if !os(tvOS) && !os(watchOS)
     @MainActor
     private func subscribeKeyboard() {
-        Publishers.Merge(
-            NotificationCenter.default
-                .publisher(
-                    for: UIResponder.keyboardWillShowNotification
-                )
-                .map {
-                    $0.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
-                        as? CGRect
-                        ?? CGRect.zero
-                }
-                .map { Double($0.height) },
-            NotificationCenter.default
-                .publisher(
-                    for: UIResponder.keyboardWillHideNotification
-                )
-                .map { _ in 0.0 }
-        )
-        .subscribe(on: DispatchQueue.main)
-        .sink { [weak self] value in
-            DispatchQueue.main.async {
-                self?.keyboardHeight = value
-            }
-        }
-        .store(in: &self.subscriptions)
-
         Publishers.Merge3(
             NotificationCenter.default
                 .publisher(for: UIResponder.keyboardDidShowNotification)
@@ -301,22 +469,8 @@ class ThomasEnvironment: ObservableObject {
     #endif
 }
 
-enum DismissReason {
-    case button(String, Bool)
-    case timedOut
-    case other
-}
 
-extension FormState {
-    fileprivate func toFormInfo() -> ThomasFormInfo {
-        ThomasFormInfo(
-            identifier: self.identifier,
-            submitted: self.isSubmitted,
-            formType: self.formTypeString,
-            formResponseType: self.formResponseType
-        )
-    }
-
+extension ThomasFormState {
     fileprivate var formTypeString: String {
         switch self.formType {
         case .form:
@@ -325,53 +479,13 @@ extension FormState {
             return "nps"
         }
     }
-
-    fileprivate func toFormResult() -> ThomasFormResult {
-        return ThomasFormResult(
-            identifier: self.identifier,
-            formData: self.data.toPayload() 
-        )
-
-    }
-}
-
-extension PagerState {
-    fileprivate func toPagerInfo(index: Int? = nil) -> ThomasPagerInfo {
-        let index = index ?? self.pageIndex
-        var pageId: String = ""
-        if index < self.pages.count {
-            pageId = self.pages[index].identifier
-        }
-
-        return ThomasPagerInfo(
-            identifier: self.identifier,
-            pageIndex: index,
-            pageIdentifier: pageId,
-            pageCount: self.pages.count,
-            completed: self.completed
-        )
-    }
-}
-
-extension ButtonState {
-    fileprivate func toButtonInfo() -> ThomasButtonInfo {
-        return ThomasButtonInfo(identifier: self.identifier)
-    }
-}
-
-extension LayoutState {
-    @MainActor
-    fileprivate func toLayoutContext() -> ThomasLayoutContext {
-        ThomasLayoutContext(
-            formInfo: self.formState?.toFormInfo(),
-            pagerInfo: self.pagerState?.toPagerInfo(),
-            buttonInfo: self.buttonState?.toButtonInfo()
-        )
-    }
 }
 
 extension AttributesEditor {
-    fileprivate func set(attributeValue: ThomasAttributeValue, attribute: String) {
+    fileprivate func set(
+        attributeValue: ThomasAttributeValue,
+        attribute: String
+    ) {
         switch attributeValue {
         case .string(let value):
             self.set(string: value, attribute: attribute)

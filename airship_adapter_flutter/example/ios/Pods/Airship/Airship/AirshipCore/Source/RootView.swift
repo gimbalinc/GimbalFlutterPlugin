@@ -22,9 +22,12 @@ struct RootView<Content: View>: View {
 #endif
 
     @ObservedObject var thomasEnvironment: ThomasEnvironment
-
+    @StateObject var thomasState: ThomasState
+    @StateObject var validatableHelper: ValidatableHelper = ValidatableHelper()
     let layout: AirshipLayout
     let content: (ThomasOrientation, ThomasWindowSize) -> Content
+
+    let associatedLabelResolver: ThomasAssociatedLabelResolver
 
     init(
         thomasEnvironment: ThomasEnvironment,
@@ -35,6 +38,15 @@ struct RootView<Content: View>: View {
         self.layout = layout
         self.content = content
         self.isForeground = AppStateTracker.shared.isForegrounded
+        self._thomasState = StateObject(
+            wrappedValue: ThomasState(
+                formState: thomasEnvironment.defaultFormState,
+                mutableState: thomasEnvironment.defaultMutableState
+            ) { [weak thomasEnvironment] state in
+                thomasEnvironment?.onStateChange(state)
+            }
+        )
+        self.associatedLabelResolver = ThomasAssociatedLabelResolver(layout: layout)
     }
 
     @ViewBuilder
@@ -42,19 +54,26 @@ struct RootView<Content: View>: View {
         content(currentOrientation, resolveWindowSize())
             .environmentObject(thomasEnvironment)
             .environmentObject(thomasEnvironment.defaultFormState)
-            .environmentObject(thomasEnvironment.defaultViewState)
+            .environmentObject(self.thomasState)
             .environmentObject(thomasEnvironment.defaultPagerState)
+            .environmentObject(
+                ThomasFormDataCollector(
+                    formState: thomasEnvironment.defaultFormState
+                )
+            )
+            .environmentObject(validatableHelper)
             .environment(\.orientation, currentOrientation)
             .environment(\.windowSize, resolveWindowSize())
             .environment(\.isVisible, isVisible)
             .environment(\.isVoiceOverRunning, isVoiceOverRunning)
+            .environment(\.thomasAssociatedLabelResolver, associatedLabelResolver)
             .onReceive(NotificationCenter.default.publisher(for: AppStateTracker.didTransitionToForeground)) { (_) in
                 self.isForeground = true
-                self.thomasEnvironment.onVisbilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
+                self.thomasEnvironment.onVisibilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
             }
             .onReceive(NotificationCenter.default.publisher(for: AppStateTracker.didTransitionToBackground)) { (_) in
                 self.isForeground = false
-                self.thomasEnvironment.onVisbilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
+                self.thomasEnvironment.onVisibilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
             }
 #if !os(watchOS)
             .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
@@ -65,11 +84,11 @@ struct RootView<Content: View>: View {
                 updateVoiceoverRunningState()
                 self.currentOrientation = RootView.resolveOrientation()
                 self.isVisible = true
-                self.thomasEnvironment.onVisbilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
+                self.thomasEnvironment.onVisibilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
             }
             .onDisappear {
                 self.isVisible = false
-                self.thomasEnvironment.onVisbilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
+                self.thomasEnvironment.onVisibilityChanged(isVisible: self.isVisible, isForegrounded: self.isForeground)
             }
 #if os(iOS)
             .onReceive(

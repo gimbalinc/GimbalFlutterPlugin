@@ -7,14 +7,32 @@ struct AirshipToggle: View {
     let info: ThomasViewInfo.Toggle
     let constraints: ViewConstraints
 
-    @EnvironmentObject var formState: FormState
+    @Environment(\.pageIdentifier) var pageID
+    @EnvironmentObject var formDataCollector: ThomasFormDataCollector
+    @EnvironmentObject var formState: ThomasFormState
+    @EnvironmentObject var thomasState: ThomasState
+    @Environment(\.thomasAssociatedLabelResolver) var associatedLabelResolver
+
     @State private var isOn: Bool = false
+
+    private var associatedLabel: String? {
+        associatedLabelResolver?.labelFor(
+            identifier: info.properties.identifier,
+            viewType: .toggle,
+            thomasState: thomasState
+        )
+    }
+
 
     var body: some View {
         createToggle()
             .constraints(self.constraints)
             .thomasCommon(self.info, formInputID: self.info.properties.identifier)
-            .accessible(self.info.accessible)
+            .accessible(
+                self.info.accessible,
+                associatedLabel: associatedLabel,
+                hideIfDescriptionIsMissing: false
+            )
             .formElement()
             .onAppear {
                 restoreFormState()
@@ -38,31 +56,59 @@ struct AirshipToggle: View {
                 constraints: self.constraints
             )
     }
+    
+    private var attributes: [ThomasFormField.Attribute]? {
+        guard
+            let name = self.info.properties.attributeName,
+            let value = self.info.properties.attributeValue
+        else {
+            return nil
+        }
+        
+        return [
+            ThomasFormField.Attribute(
+                attributeName: name,
+                attributeValue: value
+            )
+        ]
+    }
+    
+    private func checkValid(_ isOn: Bool) -> Bool {
+        return isOn || self.info.validation.isRequired != true
+    }
 
     private func updateValue(_ isOn: Bool) {
-        let isValid = isOn || !(self.info.validation.isRequired ?? false)
-        let data = FormInputData(
-            self.info.properties.identifier,
-            value: .toggle(isOn),
-            attributeName: self.info.properties.attributeName,
-            attributeValue: isOn ? self.info.properties.attributeValue : nil,
-            isValid: isValid
-        )
+        let formValue: ThomasFormField.Value = .toggle(isOn)
 
-        self.formState.updateFormInput(data)
+        let field: ThomasFormField = if checkValid(isOn) {
+            ThomasFormField.validField(
+                identifier: self.info.properties.identifier,
+                input: formValue,
+                result: .init(
+                    value: formValue,
+                    attributes: self.attributes
+                )
+           )
+        } else {
+            ThomasFormField.invalidField(
+                identifier: self.info.properties.identifier,
+                input: formValue
+            )
+        }
+
+        self.formDataCollector.updateField(field, pageID: pageID)
     }
 
     private func restoreFormState() {
-        let formValue = self.formState.data.formValue(
-            identifier: self.info.properties.identifier
-        )
-
-        guard case let .toggle(value) = formValue
+        guard
+            case .toggle(let value) = self.formState.field(
+                identifier: self.info.properties.identifier
+            )?.input
         else {
+            self.updateValue(self.isOn)
             return
         }
 
         self.isOn = value
     }
-
 }

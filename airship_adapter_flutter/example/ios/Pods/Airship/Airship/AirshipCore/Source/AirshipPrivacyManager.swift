@@ -9,14 +9,14 @@ import Foundation
 /// airshipconfig.plist file with `enabledFeatures = none`.
 /// If any feature is enabled, the SDK will collect and send the following data:
 /// - Channel ID
+/// - Contact ID
 /// - Locale
 /// - TimeZone
 /// - Platform
 /// - Opt in state (push and notifications)
 /// - SDK version
 /// - Accengage Device ID (Accengage module for migration)
-public final class AirshipPrivacyManager: @unchecked Sendable {
-
+public final class AirshipPrivacyManager: PrivacyManagerProtocol, @unchecked Sendable {
     private static let enabledFeaturesKey = "com.urbanairship.privacymanager.enabledfeatures"
 
     private let legacyIAAEnableFlag = "UAInAppMessageManagerEnabled"
@@ -132,7 +132,8 @@ public final class AirshipPrivacyManager: @unchecked Sendable {
     /// - Parameters:
     ///     - ignoringRemoteConfig: true to ignore any remotely disable features, false to include them.
     /// - Returns: `true` if a feature is enabled, otherwise `false`.
-    func isAnyFeatureEnabled(ignoringRemoteConfig: Bool) -> Bool {
+    /// * - Note: For internal use only. :nodoc:
+    public func isAnyFeatureEnabled(ignoringRemoteConfig: Bool) -> Bool {
         if ignoringRemoteConfig {
             return localEnabledFeatures != []
         } else {
@@ -337,6 +338,18 @@ extension AirshipFeature: Codable {
     }
 }
 
+/// - Note: For internal use only. :nodoc:
+public protocol PrivacyManagerProtocol: AnyObject, Sendable {
+    var enabledFeatures: AirshipFeature { get set }
+
+    func enableFeatures(_ features: AirshipFeature)
+
+    func disableFeatures(_ features: AirshipFeature)
+
+    func isEnabled(_ feature: AirshipFeature) -> Bool
+
+    func isAnyFeatureEnabled(ignoringRemoteConfig: Bool) -> Bool
+}
 
 public extension AirshipNotifications {
 

@@ -7,16 +7,45 @@ struct Score: View {
     let info: ThomasViewInfo.Score
     let constraints: ViewConstraints
 
-    @State var score: Int?
-    @EnvironmentObject var formState: FormState
+    @MainActor
+    class ViewModel: ObservableObject {
+        @Published
+        var score: AirshipJSON?
+
+        @Published
+        var index: Int?
+    }
+
+    @Environment(\.pageIdentifier) var pageID
+    @EnvironmentObject var formDataCollector: ThomasFormDataCollector
+    @EnvironmentObject var formState: ThomasFormState
+    @EnvironmentObject var thomasState: ThomasState
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var validatableHelper: ValidatableHelper
+    @Environment(\.thomasAssociatedLabelResolver) var associatedLabelResolver
+
+    private var associatedLabel: String? {
+        associatedLabelResolver?.labelFor(
+            identifier: info.properties.identifier,
+            viewType: .score,
+            thomasState: thomasState
+        )
+    }
+    @StateObject var viewModel: ViewModel = ViewModel()
 
     @ViewBuilder
     private func makeNumberRangeScoreItems(style: ThomasViewInfo.Score.ScoreStyle.NumberRange, constraints: ViewConstraints) -> some View {
         ForEach((style.start...style.end), id: \.self) { index in
-            let isOn = Binding(
-                get: { self.score == index },
-                set: { if $0 { updateScore(index) } }
+            let isOn = Binding<Bool>(
+                get: {
+                    self.viewModel.index == index
+                },
+                set: {
+                    if $0 {
+                        self.viewModel.index = index
+                        self.viewModel.score = .number(Double(index))
+                    }
+                }
             )
             Toggle(isOn: isOn.animation()) {}
                 .toggleStyle(
@@ -61,11 +90,32 @@ struct Score: View {
         let constraints = modifiedConstraints()
         createScore(constraints)
             .thomasCommon(self.info, formInputID: self.info.properties.identifier)
-            .accessible(self.info.accessible)
+            .accessible(
+                self.info.accessible,
+                associatedLabel: associatedLabel,
+                hideIfDescriptionIsMissing: false
+            )
             .formElement()
+            .airshipOnChangeOf(self.viewModel.score) { score in
+                self.updateScore(score)
+            }
             .onAppear {
                 self.restoreFormState()
-                self.updateScore(self.score)
+                if self.formState.validationMode == .onDemand {
+                    validatableHelper.subscribe(
+                        forIdentifier: info.properties.identifier,
+                        formState: formState,
+                        initialValue: self.viewModel.score,
+                        valueUpdates: self.viewModel.$score,
+                        validatables: info.validation
+                    ) { [weak thomasState, weak viewModel] actions in
+                        guard let thomasState, let viewModel else { return }
+                        thomasState.processStateActions(
+                            actions,
+                            formFieldValue: .score(viewModel.score)
+                        )
+                    }
+                }
             }
     }
 
@@ -101,39 +151,70 @@ struct Score: View {
         return min(remainingSpace / count, 66.0)
     }
 
-    private func updateScore(_ value: Int?) {
-        self.score = value
-        let isValid = value != nil || self.info.validation.isRequired != true
-
-        var attributeValue: ThomasAttributeValue?
-        if let value = value {
-            attributeValue = ThomasAttributeValue.number(Double(value))
+    private func attributes(value: AirshipJSON?) -> [ThomasFormField.Attribute]? {
+        guard
+            let value,
+            let name = info.properties.attributeName
+        else {
+            return nil
         }
 
-        let data = FormInputData(
-            self.info.properties.identifier,
-            value: .score(value),
-            attributeName: self.info.properties.attributeName,
-            attributeValue: attributeValue,
-            isValid: isValid
-        )
+        let attributeValue: ThomasAttributeValue? = if let string = value.string {
+            .string(string)
+        } else if let number = value.number {
+            .number(number)
+        } else {
+            nil
+        }
 
-        self.formState.updateFormInput(data)
+        guard let attributeValue else { return nil }
+
+        return [
+            ThomasFormField.Attribute(
+                attributeName: name,
+                attributeValue: attributeValue
+            )
+        ]
+    }
+
+    private func checkValid(_ value: AirshipJSON?) -> Bool {
+        return value != nil || self.info.validation.isRequired != true
+    }
+
+    private func updateScore(_ value: AirshipJSON?) {
+        let field: ThomasFormField = if checkValid(value) {
+            ThomasFormField.validField(
+                identifier: self.info.properties.identifier,
+                input: .score(value),
+                result: .init(
+                    value: .score(value),
+                    attributes: self.attributes(value: value)
+                )
+           )
+        } else {
+            ThomasFormField.invalidField(
+                identifier: self.info.properties.identifier,
+                input: .score(value)
+            )
+        }
+
+        self.formDataCollector.updateField(field, pageID: pageID)
     }
 
     private func restoreFormState() {
-        let formValue = self.formState.data.formValue(
-            identifier: self.info.properties.identifier
-        )
-
         guard
-            case let .score(scoreValue) = formValue,
-            let value = scoreValue
+            case .score(let value) = self.formState.field(
+                identifier: self.info.properties.identifier
+            )?.input,
+            let value,
+            let index = value.number
         else {
+            self.updateScore(self.viewModel.score)
             return
         }
 
-        self.score = value
+        self.viewModel.score = value
+        self.viewModel.index = Int(index)
     }
 }
 
@@ -239,4 +320,6 @@ private struct AirshipNumberRangeToggleStyle: ToggleStyle {
         let font = UIFont.resolveUIFont(appearance)
         return (text as NSString).size(withAttributes: [.font: font]).height
     }
+
+
 }

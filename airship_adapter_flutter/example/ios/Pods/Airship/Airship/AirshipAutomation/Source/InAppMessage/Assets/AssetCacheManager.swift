@@ -2,6 +2,10 @@
 
 import Foundation
 
+#if canImport(AirshipCore)
+import AirshipCore
+#endif
+
 /// Wrapper for the download tasks that is responsible for downloading assets
 protocol AssetDownloader: Sendable {
     /// Downloads the asset from a remote URL and returns its temporary local URL
@@ -23,7 +27,7 @@ protocol AssetFileManager: Sendable {
     func moveAsset(from tempURL: URL, to cacheURL: URL) throws
 
     /// Clears all assets corresponding to the provided identifier
-    func clearAssets(identifier: String, cacheURL: URL) throws
+    func clearAssets(cacheURL: URL) throws
 }
 
 protocol AssetCacheManagerProtocol: Actor {
@@ -42,8 +46,9 @@ actor AssetCacheManager: AssetCacheManagerProtocol {
     private let assetFileManager: any AssetFileManager
 
     private var cacheRoot: URL?
-
     private var taskMap: [String: Task<AirshipCachedAssets, any Error>] = [:]
+
+    private let downloadSemaphore: AirshipAsyncSemaphore = AirshipAsyncSemaphore(value: 6)
 
     internal init(
         assetDownloader: any AssetDownloader = DefaultAssetDownloader(),
@@ -73,31 +78,54 @@ actor AssetCacheManager: AssetCacheManagerProtocol {
         }
         
         let task: Task<AirshipCachedAssets, any Error> = Task {
-            let assetURLs = assets.compactMap({ URL(string:$0) })
+            let startTime = Date()
+
+            // Deduplicate URLs to prevent concurrent operations on the same asset
+            let uniqueAssets = Array(Set(assets))
+            let assetURLs = uniqueAssets.compactMap({ URL(string:$0) })
+
+            // Log if duplicate URLs were found
+            if assets.count != uniqueAssets.count {
+                AirshipLogger.debug("Found duplicate asset URLs for identifier \(identifier): \(assets.count) URLs reduced to \(uniqueAssets.count) unique URLs")
+            }
 
             /// Create or get the directory for the assets corresponding to a specific identifier
             let cacheDirectory = try assetFileManager.ensureCacheDirectory(identifier: identifier)
 
             let cachedAssets = AirshipCachedAssets(directory: cacheDirectory, assetFileManager: assetFileManager)
 
-            for asset in assetURLs {                
-                /// Cancellable download task
-                let tempURL = try await self.assetDownloader.downloadAsset(remoteURL: asset)
-                
-                if cachedAssets.isCached(remoteURL: asset) {
-                    continue
-                }
-    
-                if Task.isCancelled {
-                    return cachedAssets
+            try await withThrowingTaskGroup(of: Void.self) { [downloadSemaphore] group in
+                for asset in assetURLs {
+                    group.addTask {
+                        try await downloadSemaphore.withPermit {
+                            if Task.isCancelled || cachedAssets.isCached(remoteURL: asset) {
+                                return
+                            }
+
+                            let tempURL = try await self.assetDownloader.downloadAsset(remoteURL: asset)
+
+                            // Double-check after download in case another task cached it
+                            if cachedAssets.isCached(remoteURL: asset) {
+                                // Clean up temp file and return
+                                try? FileManager.default.removeItem(at: tempURL)
+                                AirshipLogger.trace("Asset was cached by another task during download, skipping: \(asset)")
+                                return
+                            }
+
+                            if let cacheURL = cachedAssets.cachedURL(remoteURL: asset) {
+                                try self.assetFileManager.moveAsset(from: tempURL, to: cacheURL)
+                            }
+                        }
+                    }
                 }
 
-                if let cacheURL = cachedAssets.cachedURL(remoteURL: asset) {
-                    /// Move the asset to its cache location:
-                    /// <.cachesDirectory>/com.urbanairship.iamassetcache/<schedule ID>/<sha256 hashed remote URL>
-                    try assetFileManager.moveAsset(from:tempURL, to:cacheURL)
-                }
+                try await group.waitForAll()
             }
+
+            let duration = Date().timeIntervalSince(startTime)
+
+            AirshipLogger.debug("In-app message \(identifier): \(assets.count) assets prepared in \(duration) seconds")
+
 
             return cachedAssets
         }
@@ -117,7 +145,13 @@ actor AssetCacheManager: AssetCacheManagerProtocol {
         if let root = self.cacheRoot {
             let cache = root.appendingPathComponent(identifier, isDirectory: true)
 
-            try? assetFileManager.clearAssets(identifier: identifier, cacheURL: cache)
+            do {
+                try assetFileManager.clearAssets(cacheURL: cache)
+            } catch {
+                AirshipLogger.debug("Unable to clear asset cache for identifier: \(identifier) with error:\(error)")
+            }
         }
     }
 }
+
+

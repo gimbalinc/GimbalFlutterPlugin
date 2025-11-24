@@ -32,26 +32,35 @@ struct DefaultAssetFileManager: AssetFileManager {
         let fileManager = FileManager.default
 
         do {
+            // Ensure parent directory exists
+            let parentDir = cacheURL.deletingLastPathComponent()
+            try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true, attributes: nil)
+
             if fileManager.fileExists(atPath: cacheURL.path) {
-                try fileManager.removeItem(at: cacheURL)
+                // Use replaceItem for atomic replacement
+                _ = try fileManager.replaceItem(at: cacheURL,
+                                                withItemAt: tempURL,
+                                                backupItemName: nil,
+                                                options: [],
+                                                resultingItemURL: nil)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: cacheURL)
             }
-            try fileManager.moveItem(atPath: tempURL.path, toPath: cacheURL.path)
-        } catch {
-            throw AirshipErrors.error("Error moving asset to asset cache.")
+        } catch let error as NSError {
+            // Handle the specific case where file already exists
+            if error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
+                // File already exists - this is okay, just clean up temp file
+                try? fileManager.removeItem(at: tempURL)
+                AirshipLogger.trace("Asset already exists at cache URL, skipping move: \(cacheURL)")
+            } else {
+                throw AirshipErrors.error("Error moving asset to asset cache \(error)")
+            }
         }
     }
 
-    func clearAssets(identifier: String, cacheURL: URL) {
-        do {
-            let fileManager = FileManager.default
-
-            /// Create asset path for the identifier directory containing the individual files
-            let assetsPath = cacheURL.appendingPathComponent(identifier, isDirectory: true)
-
-            try fileManager.removeItem(at: assetsPath)
-        } catch {
-            AirshipLogger.debug("Unable to clear asset cache for identifier: \(identifier) with error:\(error)")
-        }
+    func clearAssets(cacheURL: URL) throws {
+        let fileManager = FileManager.default
+        try fileManager.removeItem(at: cacheURL)
     }
 
     // MARK: Helpers

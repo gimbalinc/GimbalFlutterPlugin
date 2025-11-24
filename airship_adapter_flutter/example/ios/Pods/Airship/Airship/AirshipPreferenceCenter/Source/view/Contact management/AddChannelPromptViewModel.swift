@@ -11,6 +11,8 @@ import AirshipCore
 
 @MainActor
 internal class AddChannelPromptViewModel: ObservableObject {
+    let inputValidator: (any AirshipInputValidation.Validator)?
+
     @Published var state: AddChannelState = .ready
     @Published var selectedSender: PreferenceCenterConfig.ContactManagementItem.SMSSenderInfo
     @Published var inputText = ""
@@ -24,13 +26,16 @@ internal class AddChannelPromptViewModel: ObservableObject {
     internal let onRegisterSMS: (_ msisdn: String, _ senderID: String) -> Void
     internal let onRegisterEmail: (_ email: String) -> Void
 
+    private var validatedAddress: String?
+
     internal init(
         item: PreferenceCenterConfig.ContactManagementItem.AddChannelPrompt,
         theme: PreferenceCenterTheme.ContactManagement?,
         registrationOptions: PreferenceCenterConfig.ContactManagementItem.Platform?,
         onCancel: @escaping () -> Void,
         onRegisterSMS: @escaping (_ msisdn: String, _ senderID: String) -> Void,
-        onRegisterEmail: @escaping (_ email: String) -> Void
+        onRegisterEmail: @escaping (_ email: String) -> Void,
+        validator: (any AirshipInputValidation.Validator)? = nil
     ) {
         self.item = item
         self.theme = theme
@@ -39,6 +44,11 @@ internal class AddChannelPromptViewModel: ObservableObject {
         self.onRegisterSMS = onRegisterSMS
         self.onRegisterEmail = onRegisterEmail
         self.selectedSender = .none
+        self.inputValidator = if Airship.isFlying {
+            validator ?? Airship.preferenceCenter.inputValidator
+        } else {
+            validator
+        }
     }
 
     /// Attempts submission and updates state based on results of attempt
@@ -56,15 +66,22 @@ internal class AddChannelPromptViewModel: ObservableObject {
     @MainActor
     private func attemptSMSSubmission() async {
         do {
-            let formattedMSISDN = formattedMSISDN(countryCode: selectedSender.countryCode, number: inputText)
-
             /// Only start to load when we are sure it's not a duplicate failed request
             onStartLoading()
 
-            /// Attempt validation call
-            let passedValidation = try await validateSMS(msisdn: formattedMSISDN, sender: selectedSender.senderId)
+            let smsRequest: AirshipInputValidation.Request = .sms(
+                AirshipInputValidation.Request.SMS(
+                    rawInput: self.inputText,
+                    validationOptions: .sender(senderID: selectedSender.senderId, prefix: selectedSender.countryCode),
+                    validationHints: .init(minDigits: 4)
+                )
+            )
 
-            if passedValidation {
+            /// Attempt validation call
+            let passedValidation = try await inputValidator?.validateRequest(smsRequest) ?? .invalid
+
+            if case let .valid(address) = passedValidation {
+                validatedAddress = address
                 onValidationSucceeded()
             } else {
                 onValidationFailed()
@@ -83,27 +100,38 @@ internal class AddChannelPromptViewModel: ObservableObject {
     private func attemptEmailSubmission() async {
         onStartLoading()
 
-        /// Attempt email validation (just regex for now)
-        let passedValidation = validateInputFormat()
+        let emailRequest: AirshipInputValidation.Request = .email(
+            AirshipInputValidation.Request.Email(
+                rawInput: self.inputText
+            )
+        )
 
-        if passedValidation {
-            onValidationSucceeded()
-        } else {
-            onValidationFailed()
+        do {
+            let passedValidation = try await inputValidator?.validateRequest(emailRequest) ?? .invalid
+
+            if case let .valid(address) = passedValidation {
+                validatedAddress = address
+                onValidationSucceeded()
+            } else {
+                onValidationFailed()
+            }
+        } catch {
+            AirshipLogger.error(error.localizedDescription)
+            onValidationError()
         }
     }
 
     internal func onSubmit() {
-        if let platform = platform {
+        if let platform = platform, let validatedAddress = validatedAddress {
             switch platform {
             case .sms(_):
-                let formattedNumber = formattedMSISDN(countryCode: selectedSender.countryCode, number: inputText)
-                onRegisterSMS(formattedNumber, selectedSender.senderId)
+                onRegisterSMS(validatedAddress, selectedSender.senderId)
             case .email(_):
-                let formattedEmail = formattedEmail(email: inputText)
-                onRegisterEmail(formattedEmail)
+                onRegisterEmail(validatedAddress)
             }
         }
+
+        validatedAddress = nil
     }
 
     @MainActor
@@ -133,65 +161,24 @@ internal class AddChannelPromptViewModel: ObservableObject {
             self.state = .failedDefault
         }
     }
-}
 
-// MARK: Remote operations
-
-extension AddChannelPromptViewModel {
+    /// Validates input format for UI feedback (enabling/disabling submit button)
     @MainActor
-    private func validateSMS(msisdn: String, sender: String) async throws -> Bool {
-        if let delegate = Airship.contact.smsValidatorDelegate {
-            let result = try await delegate.validateSMS(msisdn: msisdn, sender: sender)
-            AirshipLogger.trace("Validating phone number through delegate")
-            return result
-        } else {
-            let result = try await Airship.contact.validateSMS(msisdn, sender: sender)
-            AirshipLogger.trace("Using default phone number validator")
-            return result
-        }
-    }
-}
-
-// MARK: Utilities
-extension AddChannelPromptViewModel {
-
-    /// Format for MSISDN  standards - including removing plus, dashes, spaces etc.
-    /// Formatting behind the scenes like this makes sense because there are lots of valid ways to show
-    /// Phone numbers like 1.503.867.5309 1-504-867-5309. This also allows us to strip the "+" from the country code
-    func formattedMSISDN(countryCode: String, number: String) -> String {
-        let cleanedCountryCode = countryCode.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-        var cleanedNumber = number.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-
-        // Remove country code from the beginning of the number if it's already present
-        if cleanedNumber.hasPrefix(cleanedCountryCode) {
-            cleanedNumber = String(cleanedNumber.dropFirst(cleanedCountryCode.count))
-        }
-
-        let msisdn = cleanedCountryCode + cleanedNumber
-        return msisdn
-    }
-
-    /// Just trim spaces for emails to be helpful
-    func formattedEmail(email: String) -> String {
-        let trimmedText = email.replacingOccurrences(of: " ", with: "")
-        return String(trimmedText)
-    }
-
-    /// Initial validation that unlocks the submit button. Email is currently only validated via this method.
-    @MainActor
-    internal func validateInputFormat() -> Bool {
+    internal func validateInputFormat() {
         if let platform = self.platform {
+            // Basic validation to enable/disable submit button
+            // Full validation happens in attemptSubmission
             switch platform {
             case .email(_):
-                return self.inputText.airshipIsValidEmail()
+                let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+                let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+                isInputFormatValid = emailPredicate.evaluate(with: inputText)
             case .sms(_):
-                let formatted = formattedMSISDN(countryCode: self.selectedSender.countryCode, number: self.inputText)
-                let msisdnRegex = "^[1-9]\\d{1,14}$"
-                let msisdnPredicate = NSPredicate(format: "SELF MATCHES %@", msisdnRegex)
-                return msisdnPredicate.evaluate(with: formatted)
+                let formattedPhone = inputText.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+                isInputFormatValid = formattedPhone.count >= 7
             }
         } else {
-            return false
+            isInputFormatValid = false
         }
     }
 }

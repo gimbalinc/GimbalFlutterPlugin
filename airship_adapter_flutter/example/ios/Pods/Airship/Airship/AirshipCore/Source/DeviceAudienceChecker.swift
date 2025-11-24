@@ -38,12 +38,18 @@ struct DefaultDeviceAudienceChecker: DeviceAudienceChecker {
 
 
 extension Array where Element == AirshipDeviceAudienceResult {
-    var reducedResult: AirshipDeviceAudienceResult {
-        var isMatch: Bool = true
+
+    func reducedResult(reducer: (Bool, Bool) -> Bool) -> AirshipDeviceAudienceResult {
+        var isMatch: Bool?
         var reportingMetadata: [AirshipJSON]? = nil
 
         self.forEach {
-            isMatch = isMatch && $0.isMatch
+            isMatch = if let isMatch {
+                reducer(isMatch, $0.isMatch)
+            } else {
+                $0.isMatch
+            }
+
             if let reporting = $0.reportingMetadata {
                 if (reportingMetadata == nil) {
                     reportingMetadata = []
@@ -53,7 +59,7 @@ extension Array where Element == AirshipDeviceAudienceResult {
         }
 
         return AirshipDeviceAudienceResult(
-            isMatch: isMatch,
+            isMatch: isMatch ?? true,
             reportingMetadata: reportingMetadata
         )
     }
@@ -100,7 +106,7 @@ extension CompoundDeviceAudienceSelector {
                     break
                 }
             }
-            return results.reducedResult
+            return results.reducedResult { first, second in first && second }
 
         case .or(let selectors):
             guard !selectors.isEmpty else {
@@ -121,7 +127,7 @@ extension CompoundDeviceAudienceSelector {
                 }
             }
 
-            return results.reducedResult
+            return results.reducedResult { first, second in first || second }
         }
     }
 }
@@ -218,13 +224,12 @@ extension DeviceAudienceSelector {
 
         let permissions = await deviceInfoProvider.permissions
         if let permissionPredicate = self.permissionPredicate {
-            var map: [String: String] = [:]
+            var map: [String: AirshipJSON] = [:]
             for entry in permissions {
-                map[entry.key.rawValue] = entry.value.rawValue
+                map[entry.key.rawValue] = AirshipJSON.string(entry.value.rawValue)
             }
 
-
-            guard permissionPredicate.evaluate(map) else {
+            guard permissionPredicate.evaluate(json: .object(map)) else {
                 return false
             }
         }
@@ -255,8 +260,10 @@ extension DeviceAudienceSelector {
             return false
         }
 
-        let versionObject = [ "ios": [ "version": appVersion] ]
-        return versionPredicate.evaluate(versionObject)
+        let versionObject = AirshipJSON.object(
+            ["ios": .object(["version": .string(appVersion)])]
+        )
+        return versionPredicate.evaluate(json: versionObject)
     }
 
 

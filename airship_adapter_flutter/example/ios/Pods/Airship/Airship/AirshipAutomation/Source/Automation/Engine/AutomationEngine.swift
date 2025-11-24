@@ -382,6 +382,12 @@ fileprivate extension AutomationEngine {
     }
 
     private func processTriggeredSchedule(scheduleID: String) async throws {
+
+        if await self.isEnginePaused.value {
+            // Wait for resume
+            _ = await self.isExecutionPaused.updates.first(where: { paused in paused == false })
+        }
+
         guard
             let data = try await self.store.getSchedule(scheduleID: scheduleID)
         else {
@@ -405,7 +411,12 @@ fileprivate extension AutomationEngine {
         }
 
         guard
-            try await self.store.getSchedule(scheduleID: scheduleID) == data
+            let isCurrent = try? await self.store.isCurrent(
+                scheduleID: scheduleID,
+                lastScheduleModifiedDate: data.lastScheduleModifiedDate,
+                scheduleState: data.scheduleState
+            ),
+            isCurrent
         else {
             AirshipLogger.trace("Trigger data has changed since preprocessing, retrying \(scheduleID)")
             try await processTriggeredSchedule(scheduleID: scheduleID)
@@ -534,7 +545,7 @@ fileprivate extension AutomationEngine {
         guard await self.executor.isValid(
             schedule: prepared.scheduleData.schedule
         ) else {
-            AirshipLogger.trace("Prepared schedule no longer \(prepared.scheduleData)")
+            AirshipLogger.trace("Prepared schedule no longer valid \(prepared.scheduleData)")
             return false
         }
 
@@ -545,18 +556,18 @@ fileprivate extension AutomationEngine {
         let triggerDate = preparedData.scheduleData.triggerInfo?.date ?? preparedData.scheduleData.scheduleStateChangeDate
 
         // Wait for conditions
-        AirshipLogger.trace("Waiting for delay conditions \(preparedData)")
+        AirshipLogger.trace("Waiting for delay conditions \(preparedData.scheduleID)")
         await self.delayProcessor.process(
             delay: preparedData.scheduleData.schedule.delay,
             triggerDate: triggerDate
         )
 
-        AirshipLogger.trace("Delay conditions met \(preparedData)")
+        AirshipLogger.trace("Delay conditions met \(preparedData.scheduleID)")
     }
 
 
     private func prepareSchedule(data: AutomationScheduleData) async throws -> PreparedData? {
-        AirshipLogger.trace("Preparing schedule \(data)")
+        AirshipLogger.trace("Preparing schedule \(data.schedule.identifier)")
 
         let prepareResult = await self.preparer.prepare(
             schedule: data.schedule,
@@ -564,7 +575,7 @@ fileprivate extension AutomationEngine {
             triggerSessionID: data.triggerSessionID
         )
 
-        AirshipLogger.trace("Finished preparing schedule \(data) result: \(prepareResult)")
+        AirshipLogger.trace("Finished preparing schedule \(data.schedule.identifier) result: \(prepareResult)")
 
         switch prepareResult {
         case .prepared(let preparedSchedule):
@@ -793,3 +804,4 @@ protocol AutomationEngineProtocol: Actor, Sendable {
     func getSchedule(identifier: String) async throws -> AutomationSchedule?
     func getSchedules(group: String) async throws -> [AutomationSchedule]
 }
+

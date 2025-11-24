@@ -10,12 +10,15 @@ enum ThomasButtonClickBehavior: String, ThomasSerializable {
     case pagerNextOrDismiss = "pager_next_or_dismiss"
     case pagerNextOrFirst = "pager_next_or_first"
     case formSubmit = "form_submit"
+    case formValidate = "form_validate"
     case pagerPause = "pager_pause"
     case pagerResume = "pager_resume"
 }
 
+
+
 extension ThomasButtonClickBehavior {
-    var sortOrder: Int {
+    fileprivate var sortOrder: Int {
         switch self {
         case .dismiss:
             return 3
@@ -35,6 +38,14 @@ extension ThomasButtonClickBehavior {
             return 1
         case .formSubmit:
             return 0
+        case .formValidate:
+            return -1
         }
+    }
+}
+
+extension Array where Element == ThomasButtonClickBehavior {
+    var sortedBehaviors: [Element] {
+        return self.sorted { $0.sortOrder < $1.sortOrder }
     }
 }

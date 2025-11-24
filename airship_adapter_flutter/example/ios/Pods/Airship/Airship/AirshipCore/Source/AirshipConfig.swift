@@ -13,7 +13,7 @@ public struct AirshipConfig: Decodable, Sendable {
 
     /// The  app key used when `inProduction` is `false`.
     ///
-    /// The development credentails are generally used to point to a Test Airship project which will send to
+    /// The development credentials are generally used to point to a Test Airship project which will send to
     /// the development  APNS sandbox.
     public var developmentAppKey: String?
 
@@ -54,7 +54,10 @@ public struct AirshipConfig: Decodable, Sendable {
     /// Flag to enable or disable web view inspection on Airship created  web views. Applies only to iOS 16.4+.
     /// Defaults to `false`
     public var isWebViewInspectionEnabled: Bool = false
-    
+
+    // Overrides the input validation used by Preference Center and Scenes.
+    public var inputValidationOverrides: AirshipInputValidation.OverridesClosure?
+
     /// Optional closure for auth challenge certificate validation.
     public var connectionChallengeResolver: ChallengeResolveClosure?
     
@@ -166,7 +169,25 @@ public struct AirshipConfig: Decodable, Sendable {
     ///
     /// Defaults to `true`.
     public var requireInitialRemoteConfigEnabled: Bool = true
-    
+
+    /// **For apps using the Swift 5 language mode:** It is **strongly recommended** to leave
+    /// this value as `false` (the default).
+    ///
+    /// A suspected compiler bug in **Xcode 16.1 and newer** can cause fatal runtime crashes
+    /// in this specific configuration. This flag disables the problematic code path.
+    /// For more details, see: https://github.com/urbanairship/ios-library/issues/434.
+    ///
+    /// ---
+    ///
+    /// **For apps using Swift 6 or newer:** You can set this to `true` to enable dynamic
+    /// background wait time calculation. This helps the SDK send off pending operations
+    /// before the app is fully backgrounded.
+    ///
+    /// If `false`, the SDK will wait a short, fixed amount of time.
+    ///
+    /// Defaults to `false`.
+    public var isDynamicBackgroundWaitTimeEnabled: Bool = false
+
     /// The Airship URL used to pull the initial config. This should only be set if you are using custom domains
     /// that forward to Airship.
     public var initialConfigURL: String?
@@ -220,7 +241,8 @@ public struct AirshipConfig: Decodable, Sendable {
         case remoteDataAPIURL
         case useUserPreferredLocale
         case restoreMessageCenterOnReinstall
-        
+        case isDynamicBackgroundWaitTimeEnabled
+
         // legacy keys
         
         case LOG_LEVEL
@@ -451,6 +473,11 @@ public struct AirshipConfig: Decodable, Sendable {
             Bool.self,
             forKey: .useUserPreferredLocale
         ) ?? self.useUserPreferredLocale
+
+        self.isDynamicBackgroundWaitTimeEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .isDynamicBackgroundWaitTimeEnabled
+        ) ?? self.isDynamicBackgroundWaitTimeEnabled
     }
 
     /// Validates credentails
@@ -475,11 +502,11 @@ public struct AirshipConfig: Decodable, Sendable {
             }
 
             if productionAppKey == developmentAppKey {
-                AirshipLogger.warn("Production & Developemtn app keys match")
+                AirshipLogger.warn("Production & Development app keys match")
             }
 
             if productionAppSecret == developmentAppSecret {
-                AirshipLogger.warn("Production & Developemtn app secrets match")
+                AirshipLogger.warn("Production & Development app secrets match")
             }
         }
 
@@ -497,9 +524,31 @@ public struct AirshipConfig: Decodable, Sendable {
     }
 }
 
+public extension AirshipConfig {
+    /// Resolves the inProduction flag. The value will be resolved with:
+    /// - `inProduction` if set
+    /// - `false` if the target environment is a simulator
+    /// - by inspecting the `embedded.mobileprovision` file to look up the APNS environment.
+    ///
+    /// - returns  The resolved in production flag.
+    /// - throws If the APNS fails to resolve to an environment. Airship will fallback to assuming its inProduction during
+    /// takeOff.
+    func resolveInProduction() throws -> Bool {
+        if let inProduction {
+            return inProduction
+        }
+
+#if targetEnvironment(simulator)
+        return false
+#else
+        return try APNSEnvironment.isProduction()
+#endif
+    }
+}
+
 // The Channel generation method. In `automatic` mode Airship will generate a new channelID and create a new channel.
 // If the restore option is specified and `channelID` is a correct ID, Airship will try to restore a channel with the specified ID
-public enum ChannelGenerationMethod {
+public enum ChannelGenerationMethod: Sendable {
     case automatic
     case restore(channelID: String)
 }

@@ -11,13 +11,20 @@ struct Label: View {
     /// View constraints.
     let constraints: ViewConstraints
 
-    @EnvironmentObject var viewState: ViewState
+    @EnvironmentObject var thomasState: ThomasState
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.sizeCategory) var sizeCategory
 
+    private var scaledFontSize: Double {
+        UIFontMetrics.default.scaledValue(
+            for: self.info.properties.textAppearance.fontSize
+        )
+    }
+    
     private var markdownText: Text {
         get throws {
             var text = try AttributedString(
-                markdown: resolvedText,
+                markdown: info.resolveLabelString(thomasState: thomasState),
                 options: .init(
                     interpretedSyntax: .inlineOnlyPreservingWhitespace
                 )
@@ -41,11 +48,13 @@ struct Label: View {
         }
     }
 
-    private var resolvedText: String {
-        return ThomasPropertyOverride.resolveRequired(
-            state: viewState,
-            overrides: self.info.overrides?.text,
-            defaultValue: self.info.properties.text
+
+
+    private var resolvedStartIcon: ThomasViewInfo.Label.LabelIcon? {
+        return ThomasPropertyOverride.resolveOptional(
+            state: thomasState,
+            overrides: self.info.overrides?.iconStart,
+            defaultValue: self.info.properties.iconStart
         )
     }
 
@@ -54,34 +63,53 @@ struct Label: View {
         guard
             self.info.properties.markdown?.disabled != true
         else {
-            return Text(verbatim: resolvedText)
+            return Text(verbatim: info.resolveLabelString(thomasState: thomasState))
         }
 
         do {
             return try markdownText
         } catch {
-            AirshipLogger.error("Failed to parse markdown text \(error) text \(resolvedText)")
-            return Text(verbatim: resolvedText)
+            let resolved = info.resolveLabelString(thomasState: thomasState)
+            AirshipLogger.error("Failed to parse markdown text \(error) text \(resolved)")
+            return Text(verbatim: resolved)
         }
     }
 
     var body: some View {
-        self.textView
-            .textAppearance(self.info.properties.textAppearance)
-            .truncationMode(.tail)
-            .constraints(
-                constraints,
-                alignment: self.info.properties.textAppearance.alignment?
-                    .toFrameAlignment()
-                    ?? Alignment.center
-            )
-            .fixedSize(
-                horizontal: false,
-                vertical: self.constraints.height == nil
-            )
-            .thomasCommon(self.info)
-            .accessible(self.info.accessible)
-            .accessibilityRole(self.info.properties.accessibilityRole)
+        HStack(spacing: 0) {
+            if let icon = resolvedStartIcon {
+                let size = scaledFontSize
+                Icons.icon(info: icon.icon, colorScheme: colorScheme)
+                    .frame(width: size, height: size)
+                    .padding(.trailing, icon.space)
+                    .accessibilityHidden(true)
+            }
+
+            self.textView
+                .textAppearance(self.info.properties.textAppearance)
+                .truncationMode(.tail)
+        }
+        .constraints(
+            constraints,
+            alignment: self.info.properties.textAppearance.alignment?
+                .toFrameAlignment()
+                ?? Alignment.center
+        )
+        .fixedSize(
+            horizontal: false,
+            vertical: self.constraints.height == nil
+        )
+        .thomasCommon(self.info)
+        .accessible(self.info.accessible, associatedLabel: nil, hideIfDescriptionIsMissing: true)
+        .accessibilityRole(self.info.properties.accessibilityRole)
+        .onAppear {
+            if self.info.properties.isAccessibilityAlert == true {
+                let message = self.info.resolveLabelString(thomasState: self.thomasState)
+                #if !os(watchOS)
+                UIAccessibility.post(notification: .announcement, argument: message)
+                #endif
+            }
+        }
     }
 }
 
@@ -128,7 +156,7 @@ extension View {
         case 2:
             return .h2
         case 3:
-            return .h1
+            return .h3
         case 4:
             return .h4
         case 5:
@@ -149,5 +177,24 @@ extension View {
         case .none:
             self
         }
+    }
+}
+
+extension ThomasViewInfo.Label {
+    @MainActor
+    func resolveLabelString(thomasState: ThomasState) -> String {
+        let effectiveRef = ThomasPropertyOverride.resolveOptional(
+            state: thomasState,
+            overrides: overrides?.ref,
+            defaultValue: properties.ref
+        )
+
+        let effectiveText = ThomasPropertyOverride.resolveRequired(
+            state: thomasState,
+            overrides: overrides?.text,
+            defaultValue: properties.text
+        )
+
+        return effectiveRef?.airshipLocalizedString(fallback: effectiveText) ?? effectiveText
     }
 }

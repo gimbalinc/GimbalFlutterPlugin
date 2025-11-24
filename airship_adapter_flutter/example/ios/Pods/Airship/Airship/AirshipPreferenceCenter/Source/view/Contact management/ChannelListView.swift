@@ -99,6 +99,7 @@ struct ChannelListView: View {
                 base: PreferenceCenterDefaults.sectionTitleAppearance,
                 colorScheme: colorScheme
             )
+            .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
@@ -266,7 +267,7 @@ extension ChannelListView {
             return nil
         }
 
-        let window: UIWindow? = UIWindow(windowScene: scene)
+        let window: UIWindow? = AirshipWindowFactory.shared.makeWindow(windowScene: scene)
 
         let disposable = AirshipMainActorCancellableBlock {
             DispatchQueue.main.async {
@@ -282,7 +283,9 @@ extension ChannelListView {
         window?.rootViewController = viewController
         window?.alpha = 0
         window?.animateIn()
-
+#if os(visionOS)
+        window?.layer.opacity = 0.9
+#endif
         return disposable
     }
 

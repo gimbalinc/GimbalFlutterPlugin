@@ -1,7 +1,7 @@
 /* Copyright Airship and Contributors */
 
 @preconcurrency
-public import Combine
+import Combine
 import Foundation
 
 #if canImport(UIKit)
@@ -10,7 +10,7 @@ import UIKit
 
 /// NOTE: For internal use only. :nodoc:
 final class RemoteData: AirshipComponent, RemoteDataProtocol {
-    fileprivate enum RefreshStatus: Sendable {
+    fileprivate enum RefreshStatus: @unchecked Sendable {
         case none
         case success
         case failed
@@ -30,8 +30,10 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
     private let date: any AirshipDateProtocol
     private let localeManager: any AirshipLocaleManagerProtocol
     private let workManager: any AirshipWorkManagerProtocol
-    private let privacyManager: AirshipPrivacyManager
+    private let privacyManager: any PrivacyManagerProtocol
     private let appVersion: String
+    private let statusUpdates: AirshipAsyncChannel<[RemoteDataSource: RemoteDataSourceStatus]> = AirshipAsyncChannel()
+    private let currentSourceStatus: AirshipAtomicValue<[RemoteDataSource: RemoteDataSourceStatus]> = .init([:])
 
     private let refreshResultSubject = PassthroughSubject<(source: RemoteDataSource, result: RemoteDataRefreshResult), Never>()
     private let refreshStatusSubjectMap: [RemoteDataSource: CurrentValueSubject<RefreshStatus, Never>]
@@ -56,7 +58,7 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
         config: RuntimeConfig,
         dataStore: PreferenceDataStore,
         localeManager: any AirshipLocaleManagerProtocol,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         contact: any InternalAirshipContactProtocol
     ) {
         let client = RemoteDataAPIClient(config: config)
@@ -96,7 +98,7 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
         config: RuntimeConfig,
         dataStore: PreferenceDataStore,
         localeManager: any AirshipLocaleManagerProtocol,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         contact: any InternalAirshipContactProtocol,
         providers: [any RemoteDataProviderProtocol],
         workManager: any AirshipWorkManagerProtocol = AirshipWorkManager.shared,
@@ -158,6 +160,7 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
         config.addRemoteConfigListener(notifyCurrent: false) { [weak self] _, new in
             self?.onConfigUpdated(new, isUpdate: true)
         }
+        updateChangeToken()
     }
 
     private func onConfigUpdated(_ remoteConfig: RemoteConfig?, isUpdate: Bool) {
@@ -173,17 +176,38 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
     public func status(
         source: RemoteDataSource
     ) async -> RemoteDataSourceStatus {
-        for provider in self.providers {
-            if (provider.source == source) {
-                return await provider.status(
-                    changeToken: self.changeToken,
-                    locale: self.localeManager.currentLocale,
-                    randomeValue: self.randomValue
-                )
-            }
+        let result = await sourceStatus(source: source)
+        await recordStatusFor([source])
+        return result
+    }
+    
+    private func sourceStatus(
+        source: RemoteDataSource
+    ) async -> RemoteDataSourceStatus {
+        return if let provider = providers.first(where: { $0.source == source }) {
+            await provider.status(
+                changeToken: self.changeToken,
+                locale: self.localeManager.currentLocale,
+                randomeValue: self.randomValue
+            )
+        } else {
+            .outOfDate
         }
-
-        return .outOfDate
+    }
+    
+    private func recordStatusFor(_ sources: [RemoteDataSource]) async {
+        var updates: [RemoteDataSource: RemoteDataSourceStatus] = self.currentSourceStatus.value
+        
+        for source in sources {
+            updates[source] = await sourceStatus(source: source)
+        }
+        
+        guard updates != self.currentSourceStatus.value else {
+            return
+        }
+        
+        self.currentSourceStatus.update(onModify: { _ in updates })
+        await statusUpdates.send(updates)
     }
 
     public func isCurrent(
@@ -192,7 +216,11 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
         let locale = localeManager.currentLocale
         for provider in self.providers {
             if (provider.source == remoteDataInfo.source) {
-                return await provider.isCurrent(locale: locale, randomeValue: randomValue)
+                return await provider.isCurrent(
+                    locale: locale,
+                    randomeValue: randomValue,
+                    remoteDataInfo: remoteDataInfo
+                )
             }
         }
 
@@ -207,6 +235,41 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
                     await enqueueRefreshTask()
                 }
                 return
+            }
+        }
+    }
+    
+    @MainActor
+    public func statusUpdates<T:Sendable>(
+        sources: [RemoteDataSource],
+        map: @escaping (@Sendable (_ statuses: [RemoteDataSource: RemoteDataSourceStatus]) -> T)
+    ) async -> AsyncStream<T> {
+        
+        return AsyncStream { [weak self] continuation in
+            let task = Task { [weak self] in
+                
+                await self?.recordStatusFor(sources)
+                
+                let isInSource: ((RemoteDataSource, RemoteDataSourceStatus)) -> Bool = {
+                    sources.contains($0.0)
+                }
+                
+                let current = self?.currentSourceStatus.value.filter(isInSource) ?? [:]
+                let mappedStatuses = map(current)
+                continuation.yield(mappedStatuses)
+                
+                if let updates = await self?.statusUpdates.makeStream() {
+                    for await item in updates {
+                        let filtered = item.filter(isInSource)
+                        continuation.yield(map(filtered))
+                    }
+                }
+                
+                continuation.finish()
+            }
+            
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
@@ -315,7 +378,8 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
 
             return success
         }
-
+        
+        await recordStatusFor(providers.map({ $0.source }))
 
         return success ? .success : .failure
     }
@@ -430,12 +494,11 @@ final class RemoteData: AirshipComponent, RemoteDataProtocol {
     }
 }
 
-#if !os(watchOS)
 extension RemoteData: AirshipPushableComponent {
     public func receivedRemoteNotification(
         _ notification: AirshipJSON
-    ) async -> UIBackgroundFetchResult {
-        
+    ) async -> UABackgroundFetchResult {
+
         guard
             let userInfo = notification.unwrapAsUserInfo(),
             userInfo[RemoteData.refreshRemoteDataPushPayloadKey] != nil
@@ -447,8 +510,16 @@ extension RemoteData: AirshipPushableComponent {
         self.enqueueRefreshTask()
         return .newData
     }
-}
+
+
+#if !os(tvOS)
+    public func receivedNotificationResponse(_ response: UNNotificationResponse) async {
+        // no-op
+    }
 #endif
+}
+
+
 
 
 extension Sequence where Iterator.Element == RemoteDataPayload {
@@ -464,6 +535,3 @@ extension Sequence where Iterator.Element == RemoteDataPayload {
 fileprivate struct SendablePromise<O, E>: @unchecked Sendable where E : Error {
     let promise: Future<O,E>.Promise
 }
-
-
-

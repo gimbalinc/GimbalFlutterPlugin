@@ -44,4 +44,9 @@ public protocol RemoteDataProtocol: AnyObject, Sendable {
     /// Forces a refresh attempt. This should generally never be called externally. Currently being exposed for
     /// test apps.
     func forceRefresh() async
+    
+    /// Gets the status updates using the given mapping.
+    /// - Returns:a stream of status updates.
+    func statusUpdates<T:Sendable>(sources: [RemoteDataSource], map: @escaping (@Sendable (_ statuses: [RemoteDataSource: RemoteDataSourceStatus]) -> T)) async -> AsyncStream<T> 
+
 }

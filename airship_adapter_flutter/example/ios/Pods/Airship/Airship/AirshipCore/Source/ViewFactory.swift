@@ -28,9 +28,9 @@ struct ViewFactory {
         case .emptyView(let info):
             AirshipEmptyView(info: info, constraints: constraints)
         case .formController(let info):
-            FormController(info: info, constraints: constraints)
+            FormController(info: .form(info), constraints: constraints)
         case .npsController(let info):
-            NpsController(info: info, constraints: constraints)
+            FormController(info: .nps(info), constraints: constraints)
         case .textInput(let info):
             TextInput(info: info, constraints: constraints)
         case .pagerController(let info):
@@ -65,6 +65,18 @@ struct ViewFactory {
             CustomView(info: info, constraints: constraints)
         case .buttonLayout(let info):
             ButtonLayout(info: info, constraints: constraints)
+        case .basicToggleLayout(let info):
+            BasicToggleLayout(info: info, constraints: constraints)
+        case .checkboxToggleLayout(let info):
+            CheckboxToggleLayout(info: info, constraints: constraints)
+        case .radioInputToggleLayout(let info):
+            RadioInputToggleLayout(info: info, constraints: constraints)
+        case .iconView(let info):
+            IconView(info: info, constraints: constraints)
+        case .scoreController(let info):
+            ScoreController(info: info, constraints: constraints)
+        case .scoreToggleLayout(let info):
+            ScoreToggleLayout(info: info, constraints: constraints)
         }
     }
 }

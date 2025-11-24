@@ -45,7 +45,7 @@ public final class MessageCenter: Sendable {
     }
 
     private let mutable: MutableValues
-    private let privacyManager: AirshipPrivacyManager
+    private let privacyManager: any PrivacyManagerProtocol
 
     /// Message center inbox.
     public let inbox: any MessageCenterInboxProtocol
@@ -108,7 +108,7 @@ public final class MessageCenter: Sendable {
     init(
         dataStore: PreferenceDataStore,
         config: RuntimeConfig,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         notificationCenter: NotificationCenter = NotificationCenter.default,
         inbox: MessageCenterInbox,
         controller: MessageCenterController
@@ -141,7 +141,7 @@ public final class MessageCenter: Sendable {
         dataStore: PreferenceDataStore,
         config: RuntimeConfig,
         channel: any InternalAirshipChannelProtocol,
-        privacyManager: AirshipPrivacyManager,
+        privacyManager: any PrivacyManagerProtocol,
         workManager: any AirshipWorkManagerProtocol
     ) {
 
@@ -272,35 +272,30 @@ extension MessageCenter {
 
     @MainActor
     func receivedRemoteNotification(
-        _ notification: AirshipJSON,
-        completionHandler: @escaping (UIBackgroundFetchResult) -> Void
-    ) {
+        _ notification: AirshipJSON
+    ) async -> UABackgroundFetchResult {
         guard
             let userInfo = notification.unWrap() as? [AnyHashable: Any],
             let messageID = MessageCenterMessage.parseMessageID(
                 userInfo: userInfo
             )
         else {
-            completionHandler(.noData)
-            return
+            return .noData
         }
 
-        Task {
-            let result = await self.inbox.refreshMessages()
+        let result = await self.inbox.refreshMessages()
 
-            if !result {
-                completionHandler(.failed)
-                return
-            }
-
-            let message = await self.inbox.message(forID: messageID)
-
-            guard message != nil else {
-                completionHandler(.noData)
-                return
-            }
-            completionHandler(.newData)
+        if !result {
+            return .failed
         }
+
+        let message = await self.inbox.message(forID: messageID)
+
+        guard message != nil else {
+            return .noData
+        }
+
+        return .newData
     }
 
     @MainActor
@@ -316,7 +311,7 @@ extension MessageCenter {
             return
         }
 
-        var window: UIWindow? = UIWindow(windowScene: scene)
+        var window: UIWindow? = AirshipWindowFactory.shared.makeWindow(windowScene: scene)
 
         self.mutable.currentDisplay = AirshipMainActorCancellableBlock {
             window?.windowLevel = .normal

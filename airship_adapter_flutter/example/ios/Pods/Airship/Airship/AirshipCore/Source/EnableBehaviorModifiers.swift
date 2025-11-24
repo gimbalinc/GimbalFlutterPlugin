@@ -7,16 +7,16 @@ import SwiftUI
 internal struct FormSubmissionEnableBehavior: ViewModifier {
     let onApply: ((Bool, ThomasEnableBehavior) -> Void)?
 
-    @EnvironmentObject var formState: FormState
+    @EnvironmentObject var formState: ThomasFormState
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let onApply = onApply {
-            content.onReceive(self.formState.$isSubmitted) { value in
-                onApply(!value, .formSubmission)
+            content.onReceive(self.formState.$status) { value in
+                onApply(value != .submitted, .formSubmission)
             }
         } else {
-            content.disabled(formState.isSubmitted)
+            content.disabled(formState.status == .submitted)
         }
     }
 }
@@ -24,20 +24,46 @@ internal struct FormSubmissionEnableBehavior: ViewModifier {
 internal struct ValidFormButtonEnableBehavior: ViewModifier {
     let onApply: ((Bool, ThomasEnableBehavior) -> Void)?
 
-    @EnvironmentObject var formState: FormState
+    @EnvironmentObject var formState: ThomasFormState
+    @Environment(\.isVisible) private var isVisible
+
+    @State var isEnabled: Bool?
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let onApply = onApply {
-            content.onReceive(self.formState.$data) { data in
-                onApply(data.isValid, .formValidation)
+        if isVisible {
+            content.airshipOnChangeOf(
+                self.formState.status,
+                initial: true
+            ) { status in
+                let isEnabled = switch(formState.validationMode) {
+                case .onDemand:
+                    switch(status) {
+                    case .error, .valid, .pendingValidation: true
+                    case .invalid, .validating, .submitted: false
+                    }
+                case .immediate:
+                    switch(status) {
+                    case .error, .valid: true
+                    case .pendingValidation, .invalid, .validating, .submitted: false
+                    }
+                }
+
+                if let onApply = onApply {
+                    onApply(!isEnabled, .formValidation)
+                } else {
+                    DispatchQueue.main.async {
+                        self.isEnabled = isEnabled
+                    }
+                }
             }
+            .disabled(isEnabled == false)
         } else {
-            content.disabled(!formState.data.isValid)
+            content
         }
     }
-}
 
+}
 
 internal struct PagerNextButtonEnableBehavior: ViewModifier {
     let onApply: ((Bool, ThomasEnableBehavior) -> Void)?
@@ -48,16 +74,15 @@ internal struct PagerNextButtonEnableBehavior: ViewModifier {
     func body(content: Content) -> some View {
         if let onApply = onApply {
             content.onReceive(self.pagerState.$pageIndex) { pageIndex in
-                onApply(pageIndex < (pagerState.pages.count - 1), .pagerNext)
+                onApply(pageIndex < (pagerState.pageStates.count - 1), .pagerNext)
             }
         } else {
             content.disabled(
-                pagerState.pageIndex >= (pagerState.pages.count - 1)
+                pagerState.pageIndex >= (pagerState.pageStates.count - 1)
             )
         }
     }
 }
-
 
 struct PagerPreviousButtonEnableBehavior: ViewModifier {
     let onApply: ((Bool, ThomasEnableBehavior) -> Void)?
@@ -75,7 +100,6 @@ struct PagerPreviousButtonEnableBehavior: ViewModifier {
         }
     }
 }
-
 
 internal struct AggregateEnableBehavior: ViewModifier {
     let behaviors: [ThomasEnableBehavior]
@@ -99,7 +123,6 @@ internal struct AggregateEnableBehavior: ViewModifier {
         }
     }
 }
-
 
 extension View {
     @ViewBuilder

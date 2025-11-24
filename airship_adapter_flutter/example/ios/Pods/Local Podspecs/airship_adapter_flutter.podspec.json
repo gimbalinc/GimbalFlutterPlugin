@@ -19,7 +19,7 @@
 
     ],
     "GimbalAirshipAdapter": [
-      "~> 4.3.0"
+      "~> 4.4.0"
     ]
   },
   "platforms": {
