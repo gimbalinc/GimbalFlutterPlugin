@@ -1,0 +1,43 @@
+# IDE files
+*.iml
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+**/build/
+*.class
+*.jar
+*.war
+*.ear
+
+# Gradle
+.gradle/
+local.properties
+**/local.properties
+
+# iOS
+**/Pods/
+**/Podfile.lock
+**/*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/DerivedData/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+
+# Test coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+flutter_*.log
+
+# OS
+.DS_Store
+Thumbs.db

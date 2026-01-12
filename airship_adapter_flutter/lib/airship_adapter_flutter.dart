@@ -67,6 +67,26 @@ class AirshipAdapterFlutter {
     }
   }
 
+  /// Request location permissions (iOS only)
+  /// 
+  /// This method requests "Always" location authorization which is required
+  /// for Gimbal to work properly in the background.
+  /// 
+  /// On Android, use permission_handler package to request permissions.
+  /// 
+  /// Throws [PlatformException] if native request fails.
+  static Future<void> requestLocationPermissions() async {
+    try {
+      await _methodChannel.invokeMethod("requestLocationPermissions");
+    } on PlatformException catch (e) {
+      throw PlatformException(
+        code: e.code,
+        message: e.message ?? 'Failed to request location permissions',
+        details: e.details,
+      );
+    }
+  }
+
   /// Start SDKs
   /// 
   /// Throws [PlatformException] if native start fails.

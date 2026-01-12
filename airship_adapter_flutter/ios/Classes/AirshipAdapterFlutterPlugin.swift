@@ -3,15 +3,16 @@ import GimbalAirshipAdapter
 import AirshipKit
 import Gimbal
 import Flutter
+import CoreLocation
 
-public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, PlaceManagerDelegate {
+public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, PlaceManagerDelegate, CLLocationManagerDelegate {
   private var eventSink: FlutterEventSink?
   private var methodChannel: FlutterMethodChannel?
   private var eventChannel: FlutterEventChannel?
   private var placeManager: PlaceManager?
   private var enableDebugLogging: Bool = false
   private var isConfigured: Bool = false
-  
+  private var locationManager: CLLocationManager?
 
   private let eventQueue = DispatchQueue(label: "com.gimbal.airship.eventQueue", qos: .utility)
 
@@ -34,6 +35,82 @@ public class AirshipAdapterFlutterPlugin: NSObject, FlutterPlugin, FlutterStream
                   self.log("WARNING: eventSink is nil when trying to send: \(message)")
               }
           }
+      }
+  }
+  
+  // MARK: - Location Permission Check
+  private func checkLocationAuthorizationStatus() -> CLAuthorizationStatus {
+      if locationManager == nil {
+          locationManager = CLLocationManager()
+          locationManager?.delegate = self
+      }
+      let status = locationManager?.authorizationStatus ?? .notDetermined
+      let statusString: String
+      
+      switch status {
+      case .notDetermined:
+          statusString = "NOT_DETERMINED - User hasn't been asked yet"
+      case .restricted:
+          statusString = "RESTRICTED - Location access restricted (parental controls)"
+      case .denied:
+          statusString = "DENIED - User denied location access"
+      case .authorizedWhenInUse:
+          statusString = "AUTHORIZED_WHEN_IN_USE - Can only use location when app is in foreground"
+      case .authorizedAlways:
+          statusString = "AUTHORIZED_ALWAYS - Can use location in background (REQUIRED for Gimbal)"
+      @unknown default:
+          statusString = "UNKNOWN"
+      }
+      
+      // Use logger instead of print
+      self.log("📍 Location Authorization Status: \(statusString)")
+      
+      // Send status to Flutter for UI display
+      if status == .authorizedAlways {
+          sendEvent("Location: Authorized Always ✅")
+      } else if status == .authorizedWhenInUse {
+          sendEvent("Location: Authorized When In Use ⚠️ (Background location may not work)")
+      } else if status == .denied {
+          sendEvent("Location: DENIED ❌ (Gimbal will not work)")
+      } else if status == .notDetermined {
+          sendEvent("Location: Not Determined ⏳ (Request permissions first)")
+      }
+      
+      return status
+  }
+  
+  // MARK: - Request Location Permissions
+  private func requestLocationPermissions() {
+      // Ensure locationManager is created and retained
+      if locationManager == nil {
+          locationManager = CLLocationManager()
+          locationManager?.delegate = self
+          self.log("📍 Created CLLocationManager instance")
+      }
+      
+      let currentStatus = locationManager?.authorizationStatus ?? .notDetermined
+      self.log("📍 Current location status before request: \(currentStatus.rawValue)")
+      
+      // Always try to request "Always" authorization if not already granted
+      if currentStatus != .authorizedAlways {
+          if currentStatus == .notDetermined {
+              // Request "Always" authorization (required for Gimbal background monitoring)
+              locationManager?.requestAlwaysAuthorization()
+              self.log("📍 Requested location permissions (Always) - dialog should appear")
+              sendEvent("Location: Requesting permissions... (check your device)")
+          } else if currentStatus == .authorizedWhenInUse {
+              // Upgrade from "When In Use" to "Always"
+              locationManager?.requestAlwaysAuthorization()
+              self.log("📍 Requesting upgrade to Always authorization - dialog should appear")
+              sendEvent("Location: Upgrading to Always authorization... (check your device)")
+          } else {
+              // Denied or restricted - can't request again, user must go to Settings
+              self.log("📍 Location permissions denied/restricted. User must enable in Settings.")
+              sendEvent("Location: DENIED - Please enable in Settings → Privacy → Location Services")
+          }
+      } else {
+          self.log("📍 Location permissions already granted (Always)")
+          sendEvent("Location: Already authorized Always ✅")
       }
   }
   
@@ -156,31 +233,48 @@ extension AirshipAdapterFlutterPlugin {
       DispatchQueue.main.async {
           do {
               try Airship.takeOff(config, launchOptions: nil)
+              self.log("Airship.takeOff() completed")
               
+              // Check location permissions and request if not determined
+              let locationStatus = self.checkLocationAuthorizationStatus()
+              if locationStatus == .notDetermined {
+                  self.log("📍 Location permissions not determined - requesting automatically")
+                  self.requestLocationPermissions()
+              }
+              
+              // Set Gimbal API key FIRST (before creating PlaceManager or starting)
+              Gimbal.setAPIKey(gimbalKey)
+              self.log("Gimbal API key set")
+              
+              // Create PlaceManager and set delegate
               if self.placeManager == nil {
                   self.placeManager = PlaceManager()
                   self.placeManager?.delegate = self
+                  self.log("PlaceManager created, delegate set")
               }
               
-              
+              // Configure adapter settings
               self.configureAdapterSettings()
+              self.log("Adapter settings configured")
               
+              // Start AirshipAdapter (this initializes the bridge, but doesn't start Gimbal yet)
               AirshipAdapter.shared.start(gimbalKey)
+              self.log("AirshipAdapter.shared.start() called")
               
-              Gimbal.setAPIKey(gimbalKey)
-              Gimbal.start()
-              
-              
-              
+              // Mark as configured (but DON'T start Gimbal here - that happens in start())
               self.isConfigured = true
               
-             
-              self.sendEvent("iOS: AirshipAdapter restored")
+              // Restore adapter state
+              AirshipAdapter.shared.restore()
+              self.log("AirshipAdapter restored")
+              
+              self.sendEvent("iOS: AirshipAdapter configured")
 
               if self.enableDebugLogging {
                   Debugger.enableDebugLogging()
                   Debugger.enableBeaconSightingsLogging()
                   Debugger.enablePlaceLogging()
+                  self.log("Gimbal Debugger logging enabled")
               }
 
               result(nil)
@@ -193,6 +287,15 @@ extension AirshipAdapterFlutterPlugin {
           }
       }
 
+    case "requestLocationPermissions":
+      DispatchQueue.main.async {
+          self.log("📍 requestLocationPermissions() called from Flutter")
+          self.requestLocationPermissions()
+          // Don't wait for user response - it's async
+          result("Location permission request initiated - check device for dialog")
+      }
+      break
+      
     case "start":
       guard isConfigured else {
           result(FlutterError(
@@ -203,15 +306,45 @@ extension AirshipAdapterFlutterPlugin {
           return
       }
       
+      // Check location permissions before starting
+      let locationStatus = self.checkLocationAuthorizationStatus()
+      
+      // Warn if permissions not granted, but don't block (let user decide)
+      if locationStatus == .notDetermined {
+          self.log("⚠️ WARNING: Location permissions not determined. Gimbal may not work properly.")
+          sendEvent("⚠️ WARNING: Location permissions not granted. Please request permissions first.")
+      } else if locationStatus == .denied {
+          self.log("❌ ERROR: Location permissions denied. Gimbal will not work.")
+          sendEvent("❌ ERROR: Location permissions denied. Gimbal will not work.")
+      } else if locationStatus == .authorizedWhenInUse {
+          self.log("⚠️ WARNING: Only 'When In Use' permission granted. Background location may not work.")
+          sendEvent("⚠️ WARNING: Only 'When In Use' permission. Background monitoring may not work.")
+      }
+      
       // Ensure PlaceManager delegate is set up
       if self.placeManager == nil {
           self.placeManager = PlaceManager()
           self.placeManager?.delegate = self
+          self.log("PlaceManager created in start() method")
       }
       
+      // Verify PlaceManager delegate is set
+      if self.placeManager?.delegate == nil {
+          self.placeManager?.delegate = self
+          self.log("PlaceManager delegate re-set in start() method")
+      }
+      
+      // Configure adapter settings (in case start is called separately)
       configureAdapterSettings()
+      
+      // Restore adapter state
       AirshipAdapter.shared.restore()
+      self.log("AirshipAdapter restored in start()")
+      
+      // NOW start Gimbal (this is where actual monitoring begins)
       Gimbal.start()
+      self.log("Gimbal.start() called - isStarted: \(Gimbal.isStarted())")
+      
       sendEvent("iOS: Gimbal started")
       result("Started")
 
@@ -258,4 +391,32 @@ extension AirshipAdapterFlutterPlugin {
       let msg = "Beacon Sighting"
       sendEvent(msg)
   }
+}
+
+// MARK: - CLLocationManagerDelegate
+extension AirshipAdapterFlutterPlugin {
+    public func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        // Always log this (not just when debug logging is enabled) since it's important
+        print("[AirshipAdapterFlutter] 📍 Location authorization changed: \(status.rawValue)")
+        self.log("📍 Location authorization changed: \(status.rawValue)")
+        
+        switch status {
+        case .authorizedAlways:
+            sendEvent("Location: Authorized Always ✅")
+            self.log("✅ Location permissions granted (Always) - Gimbal can now work")
+        case .authorizedWhenInUse:
+            sendEvent("Location: Authorized When In Use ⚠️ (Background may not work)")
+            self.log("⚠️ Location permissions granted (When In Use) - Background monitoring may not work")
+        case .denied:
+            sendEvent("Location: Denied ❌ (Gimbal will not work)")
+            self.log("❌ Location permissions denied - Gimbal will not work")
+        case .restricted:
+            sendEvent("Location: Restricted ❌ (Gimbal will not work)")
+            self.log("❌ Location permissions restricted - Gimbal will not work")
+        case .notDetermined:
+            self.log("📍 Location permissions still not determined")
+        @unknown default:
+            break
+        }
+    }
 }
